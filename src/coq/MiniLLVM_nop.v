@@ -106,6 +106,7 @@ Inductive instr : Set :=
 | INSTR_Alloca (t:typ) 
 | INSTR_Load   (t:typ) (ptr:tvalue)     
 | INSTR_Store  (val:tvalue) (ptr:tident)
+| INSTR_Nop
 | INSTR_Unreachable
 .
 
@@ -271,6 +272,7 @@ Definition next_or_term term_id (is : list (instr_id * instr)) : instr_id :=
 Fixpoint cmd_from_block to_find fn bn term_id is : option cmd :=
   match is with
     | [] => None
+    | (id, INSTR_Nop as ins) :: rest
     | (id, INSTR_Op _ as ins) :: rest
     | (id, INSTR_Phi _ _ as ins) :: rest
     | (id, INSTR_Alloca _ as ins) :: rest
@@ -705,7 +707,8 @@ Fixpoint stepD (CFG:cfg) (s:state) : D state :=
       | TYPE_Void => Ret (mk_path f blk i, combine ids' dvs, (KRet_void e p')::k)
       | _ => Ret (mk_path f blk i, combine ids' dvs, (KRet e id p')::k)
       end
-        
+
+    | Step (INSTR_Nop) p' => Ret (p', e, k)
     | Step (INSTR_Unreachable) _ => Err
                                                        
     | Jump (TERM_Ret (t, op)) =>
