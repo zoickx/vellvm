@@ -34,10 +34,11 @@ Module Wordsize1.
   Proof. unfold wordsize; congruence. Qed.
 End Wordsize1.
 
+Module Int64 := Integers.Int64.
 Module Int32 := Integers.Int.
 Module Int1 := Make(Wordsize1).
 
-
+Print Int1.
 
 Definition int1 := Int1.int.
 Definition int32 := Int32.int.
@@ -120,35 +121,97 @@ Module StepSemantics(A:ADDR).
   (* TODO: implement LLVM semantics *)
 
 
-  Definition integer_op (bits:Z) (iop:ibinop) (x y:inttyp bits) : err value:= failwith "todo".
+  (* Temporary workaround, but definitely not desireable in the future.
+     How can the duplication be abstracted (fun of type Module -> Int)? *)
+  Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
+    DVALUE_I1
+      match iop with
+      | Add _ _ => Int1.add x y
+      | Sub _ _ => Int1.sub x y
+      | Mul _ _ => Int1.mul x y
+      | Shl _ _ => Int1.shl x y
+      | UDiv _ => Int1.divu x y
+      | SDiv _ => Int1.divs x y
+      | LShr _ => Int1.shl x y
+      | AShr _ => Int1.shr x y
+      | URem => Int1.modu x y
+      | SRem => Int1.mods x y
+      | And => Int1.and x y
+      | Or => Int1.or x y
+      | Xor => Int1.xor x y
+      end.
 
-  Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) := failwith "todo".
+  Definition eval_i32_op (iop:ibinop) (x y:inttyp 32) : value:=
+    DVALUE_I32
+      match iop with
+      | Add _ _ => Int32.add x y
+      | Sub _ _ => Int32.sub x y
+      | Mul _ _ => Int32.mul x y
+      | Shl _ _ => Int32.shl x y
+      | UDiv _ => Int32.divu x y
+      | SDiv _ => Int32.divs x y
+      | LShr _ => Int32.shl x y
+      | AShr _ => Int32.shr x y
+      | URem => Int32.modu x y
+      | SRem => Int32.mods x y
+      | And => Int32.and x y
+      | Or => Int32.or x y
+      | Xor => Int32.xor x y
+      end.
+
+  Definition eval_i64_op (iop:ibinop) (x y:inttyp 64) : value:=
+    DVALUE_I64
+      match iop with
+      | Add _ _ => Int64.add x y
+      | Sub _ _ => Int64.sub x y
+      | Mul _ _ => Int64.mul x y
+      | Shl _ _ => Int64.shl x y
+      | UDiv _ => Int64.divu x y
+      | SDiv _ => Int64.divs x y
+      | LShr _ => Int64.shl x y
+      | AShr _ => Int64.shr x y
+      | URem => Int64.modu x y
+      | SRem => Int64.mods x y
+      | And => Int64.and x y
+      | Or => Int64.or x y
+      | Xor => Int64.xor x y
+      end.
   
+  (* Having trouble with this approach. Why is it that bits isn't being 
+     "plugged in" to the type of x and y in the pattern match?
+  Definition integer_op (bits:Z) (iop:ibinop) (x y:inttyp bits) : err value:=
+    match bits with
+    | 1 => mret (eval_i1_op iop x y)
+    | 32 => mret (eval_i32_op iop x y)
+    | 64 => mret (eval_i64_op iop x y)
+    | _ => failwith "unsupported bitsize"
+    end.*)
+
+  Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) :=
+    match bits with
+    | 1 => mret (Int1.repr i) 
+    | 32 => mret (Int32.repr i)
+    | 64 => mret (Int64.repr i)
+    | _ => failwith "unsupported integer size"
+    end.
+        
   Definition eval_iop t iop v1 v2 : err value :=
     match t, v1, v2 with
     | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
       'v1 <- coerce_integer_to_int bits i1;
       'v2 <- coerce_integer_to_int bits i2;
-      integer_op bits iop v1 v2
-      
-      (* mret (DV (VALUE_Integer *)
-      (*                         match iop with *)
-      (*                         | Add _ _ => (i1 + i2)%Z *)
-      (*                         | Sub _ _ => (i1 - i2)%Z *)
-      (*                         | Mul _ _ => (i1 * i2)%Z *)
-      (*                         | Shl _ _  *)
-      (*                         | UDiv _ *)
-      (*                         | SDiv _ *)
-      (*                         | LShr _ *)
-      (*                         | AShr _ *)
-      (*                         | URem | SRem | And | Or | Xor => 0%Z *)
-      (*                         end)) *)
-    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
-    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => failwith "todo"
-      
-    | _, DVALUE_I1 i1, DVALUE_I32 i2 => failwith "ill typed"
-                                            
-    | _, _, _ => failwith "eval_iop"
+      (* Again, why isn't bits being plugged in?
+      match bits with
+      | 1 => mret (eval_i1_op iop v1 v2)
+      | 32 => mret (eval_i32_op iop v1 v2)
+      | 64 => mret (eval_i64_op iop v1 v2)
+      | _ => failwith "unsupported bitsize"
+      end*)
+      mret (DV (VALUE_Integer 0))
+    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => mret (eval_i1_op iop i1 i2)
+    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => mret (eval_i32_op iop i1 i2)
+    | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => mret (eval_i64_op iop i1 i2)
+    | _, _, _ => failwith "ill_typed"
     end.
 
   (* TODO: replace Coq Z with appropriate i64, i32, i1 values *)
