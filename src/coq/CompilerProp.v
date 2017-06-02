@@ -52,7 +52,6 @@ Fixpoint imp_memory_eqb (m1 : list dvalue) (m2 : list dvalue) : bool :=
 (* TODO: 
      Add a 'run' function to Imp to execute n steps of the
      Imp operational semantics starting from a given state.
-
      One possible testing issue: the Vellvm code of a given
      imp program will take many more steps.
  *)
@@ -114,8 +113,6 @@ Definition another_imp_compiler_correct (p:Imp.com) : string * bool :=
 Example prog1 := W ::= AId W.
 Example prog2 := X ::= APlus (AId W) (AId W).
 
-(*
+
 Eval vm_compute in (compile prog2).
 Eval vm_compute in (another_imp_compiler_correct prog1).
-*)
-
