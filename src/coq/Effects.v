@@ -259,21 +259,15 @@ Abort.
 
 Lemma obs_equiv_trans : forall {A} (d1 d2 d3: Obs A), obs_equiv d1 d2 -> obs_equiv d2 d3 -> obs_equiv d1 d3.
 Proof.
-  intro A. pcofix CIH.
+  intro A.
   intros d1 d2 d3 H1 H2.
-  pfold.
   punfold H1. remember (upaco2 obs_equiv_step bot2) as R.
   generalize dependent d3.
-  induction H1; intros d3 H2.
-  - punfold H2. rewrite <- HeqR in H2. remember (Ret a) as d2.
-    induction H2; try inversion Heqd2; eauto.
-    apply obs_equiv_step_rgt. subst. apply IHobs_equiv_step in H.  exact H.
-  - punfold H2. rewrite <- HeqR in H2. remember (Fin v) as d2.
-    induction H2; try inversion Heqd2; eauto.
-    apply obs_equiv_step_rgt. subst. apply IHobs_equiv_step in H. exact H.
-  - punfold H2. rewrite <- HeqR in H2. remember (Err s2) as d2.
-    induction H2; try inversion Heqd2; eauto.
-  - punfold H2.
+  induction H1; intros d3 H2; try punfold H2.
+  - rewrite <- HeqR in H2. remember (Err s2) as d2.
+    induction H2; try inversion Heqd2; eauto. subst.
+(*    
+  - punfold H2. 
     rewrite <- HeqR in H2. remember (Tau d2) as d.
     induction H2; try inversion Heqd; subst; eauto.
     + pclearbot. destruct equiv. destruct equiv0.
@@ -282,6 +276,7 @@ Proof.
     pfold. eapply obs_equiv_gen_mon. eapply SIM0. eapply LE0.
     + pclearbot. destruct equiv. 
       apply obs_equiv_step_lft.  eapply obs_equiv_gen_mon.
+*)
 Abort.
       
 

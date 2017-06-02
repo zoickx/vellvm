@@ -14,7 +14,7 @@ Require Import ZArith String Omega List Equalities MSets.
 Require Import Vellvm.Classes Vellvm.Ollvm_ast Vellvm.AstLib.
 
 (* Logical Foundations dependencies *)
-Require Import Imp Maps.
+Require Import Vellvm.Imp Vellvm.Maps.
 
 (* "Flattened" representation of Vellvm code *)
 Inductive elt :=
@@ -260,12 +260,11 @@ Fixpoint compile_com (g:ctxt) (c:com) : LLVM () :=
   match c with
   | CSkip => mret ()
 
-  | CAss x a => failwith "todo"
-(*                        
+  | CAss x a => 
     'v <- compile_aexp g a;
     'ptr <- lift "CAss ident not found" (g x);
     '; store v ptr;
-    mret () *)
+    mret () 
 
   | CSeq c1 c2 =>
     'code1 <- compile_com g c1;
@@ -366,7 +365,7 @@ Definition compile (c:com) : err (toplevel_entities (list block)) :=
           run (
             let fvs := IDSet.elements (fv c) in
             'g <- compile_fv fvs;  
-(*            '; compile_com g c; *)
+            '; compile_com g c; 
 (*            '; print_fv fvs g;  (* UNCOMMENT to enable imp state printing *) *)
             '; term TERM_Ret_void;    
             mret fvs

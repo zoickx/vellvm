@@ -13,6 +13,8 @@ Require Import  Vellvm.Classes Vellvm.Util.
 Require Import Vellvm.Ollvm_ast Vellvm.AstLib Vellvm.CFG.
 Import ListNotations.
 
+Require Import compcert.lib.Integers.
+
 Open Scope Z_scope.
 Open Scope string_scope.
 
@@ -25,6 +27,30 @@ Module Type ADDR.
   Parameter addr : Set.
 End ADDR.  
 
+
+Module Wordsize1.
+  Definition wordsize := 1%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize1.
+
+Module Int32 := Integers.Int.
+Module Int1 := Make(Wordsize1).
+
+
+
+Definition int1 := Int1.int.
+Definition int32 := Int32.int.
+Definition int64 := Int64.int.
+
+Definition inttyp (x:Z) : Type :=
+  match x with
+  | 1 => int1
+  | 32 => int32
+  | 64 => int64
+  | _ => False
+  end.
+
 Module StepSemantics(A:ADDR).
 
   (* The set of dynamic values manipulated by an LLVM program. This
@@ -36,7 +62,9 @@ Module StepSemantics(A:ADDR).
     | DV : Expr dvalue -> dvalue
     | DVALUE_CodePointer (p : pc)
     | DVALUE_Addr (a:A.addr)
-(*    | DVALUE_I32 (x:CompCert.I32) *)
+    | DVALUE_I1 (x:int1)
+    | DVALUE_I32 (x:int32)
+    | DVALUE_I64 (x:int64)
     .
   
     Module ET : Vellvm.Effects.EffT
@@ -91,22 +119,36 @@ Module StepSemantics(A:ADDR).
   (* Arithmetic Operations ---------------------------------------------------- *)
   (* TODO: implement LLVM semantics *)
 
-  Definition eval_iop iop v1 v2 : err value :=
-    match v1, v2 with
-    | DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
-      mret (DV (VALUE_Integer
-                              match iop with
-                              | Add _ _ => (i1 + i2)%Z
-                              | Sub _ _ => (i1 - i2)%Z
-                              | Mul _ _ => (i1 * i2)%Z
-                              | Shl _ _ 
-                              | UDiv _
-                              | SDiv _
-                              | LShr _
-                              | AShr _
-                              | URem | SRem | And | Or | Xor => 0%Z
-                              end))
-    | _, _ => failwith "eval_iop"
+
+  Definition integer_op (bits:Z) (iop:ibinop) (x y:inttyp bits) : err value:= failwith "todo".
+
+  Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) := failwith "todo".
+  
+  Definition eval_iop t iop v1 v2 : err value :=
+    match t, v1, v2 with
+    | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
+      'v1 <- coerce_integer_to_int bits i1;
+      'v2 <- coerce_integer_to_int bits i2;
+      integer_op bits iop v1 v2
+      
+      (* mret (DV (VALUE_Integer *)
+      (*                         match iop with *)
+      (*                         | Add _ _ => (i1 + i2)%Z *)
+      (*                         | Sub _ _ => (i1 - i2)%Z *)
+      (*                         | Mul _ _ => (i1 * i2)%Z *)
+      (*                         | Shl _ _  *)
+      (*                         | UDiv _ *)
+      (*                         | SDiv _ *)
+      (*                         | LShr _ *)
+      (*                         | AShr _ *)
+      (*                         | URem | SRem | And | Or | Xor => 0%Z *)
+      (*                         end)) *)
+    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
+    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => failwith "todo"
+      
+    | _, DVALUE_I1 i1, DVALUE_I32 i2 => failwith "ill typed"
+                                            
+    | _, _, _ => failwith "eval_iop"
     end.
 
   (* TODO: replace Coq Z with appropriate i64, i32, i1 values *)
@@ -166,10 +208,10 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
   | OP_IBinop iop t op1 op2 =>
     'v1 <- f e op1;
     'v2 <- f e op2;
-    (eval_iop iop) v1 v2
+    (eval_iop t iop) v1 v2
 
   | OP_ICmp cmp t op1 op2 => 
-    'v1 <- f e op1;
+    'v1 <- f e op1;                   
     'v2 <- f e op2;
     (eval_icmp cmp) v1 v2
 

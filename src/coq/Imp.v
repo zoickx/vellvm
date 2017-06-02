@@ -27,7 +27,7 @@ Require Import Coq.Lists.List.
 Require Import Coq.omega.Omega.
 Import ListNotations.
 
-Require Import Maps.
+Require Import Vellvm.Maps.
 (* /IMPORTS *)
 
 (* ################################################################# *)
