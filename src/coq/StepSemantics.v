@@ -121,8 +121,8 @@ Module StepSemantics(A:ADDR).
   (* TODO: implement LLVM semantics *)
 
 
-  (* Temporary workaround, but definitely not desireable in the future.
-     How can the duplication be abstracted (fun of type Module -> Int)? *)
+  (* Temporary workaround, but how can the duplication 
+     be abstracted (fun of type Module -> Int)? *)
   Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
     DVALUE_I1
       match iop with
@@ -176,16 +176,15 @@ Module StepSemantics(A:ADDR).
       | Or => Int64.or x y
       | Xor => Int64.xor x y
       end.
-  
   (* Having trouble with this approach. Why is it that bits isn't being 
-     "plugged in" to the type of x and y in the pattern match?
+     "plugged in" to the type of x and y in the pattern match?*)
   Definition integer_op (bits:Z) (iop:ibinop) (x y:inttyp bits) : err value:=
-    match bits with
-    | 1 => mret (eval_i1_op iop x y)
-    | 32 => mret (eval_i32_op iop x y)
-    | 64 => mret (eval_i64_op iop x y)
-    | _ => failwith "unsupported bitsize"
-    end.*)
+    match bits, x, y with
+    | 1, x, y => mret (eval_i1_op iop x y)
+    | 32, x, y => mret (eval_i32_op iop x y)
+    | 64, x, y => mret (eval_i64_op iop x y)
+    | _, _, _ => failwith "unsupported bitsize"
+    end.
 
   Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) :=
     match bits with
@@ -200,17 +199,10 @@ Module StepSemantics(A:ADDR).
     | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
       'v1 <- coerce_integer_to_int bits i1;
       'v2 <- coerce_integer_to_int bits i2;
-      (* Again, why isn't bits being plugged in?
-      match bits with
-      | 1 => mret (eval_i1_op iop v1 v2)
-      | 32 => mret (eval_i32_op iop v1 v2)
-      | 64 => mret (eval_i64_op iop v1 v2)
-      | _ => failwith "unsupported bitsize"
-      end*)
-      mret (DV (VALUE_Integer 0))
-    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => mret (eval_i1_op iop i1 i2)
-    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => mret (eval_i32_op iop i1 i2)
-    | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => mret (eval_i64_op iop i1 i2)
+      integer_op bits iop v1 v2
+    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
+    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_op 32 iop i1 i2
+    | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_op 64 iop i1 i2
     | _, _, _ => failwith "ill_typed"
     end.
 
