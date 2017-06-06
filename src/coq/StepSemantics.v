@@ -14,6 +14,7 @@ Require Import Vellvm.Ollvm_ast Vellvm.AstLib Vellvm.CFG.
 Import ListNotations.
 
 Require Import compcert.lib.Integers.
+Require Import compcert.lib.Floats.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -27,7 +28,7 @@ Module Type ADDR.
   Parameter addr : Set.
 End ADDR.  
 
-
+(* Set up for i1, i32, and i64 *)
 Module Wordsize1.
   Definition wordsize := 1%nat.
   Remark wordsize_not_zero: wordsize <> 0%nat.
@@ -50,6 +51,12 @@ Definition inttyp (x:Z) : Type :=
   | _ => False
   end.
 
+(* Rename single and double precision floating points to reflect llvm 
+   naming conventions, ie doubles are compcert floats and floats are compcert
+   float32s. *)
+Definition ll_double := float.
+Definition ll_float := float32.
+
 Module StepSemantics(A:ADDR).
 
   (* The set of dynamic values manipulated by an LLVM program. This
@@ -64,6 +71,8 @@ Module StepSemantics(A:ADDR).
     | DVALUE_I1 (x:int1)
     | DVALUE_I32 (x:int32)
     | DVALUE_I64 (x:int64)
+    | DVALUE_Double (x:ll_double)
+    | DVALUE_Float (x:ll_float)
     | DVALUE_Poison
     .
   
@@ -319,16 +328,19 @@ Module StepSemantics(A:ADDR).
     | TYPE_Vector s (TYPE_I 1), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
     | TYPE_Vector s (TYPE_I 32), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
     | TYPE_Vector s (TYPE_I 64), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2) =>
-      let vec := List.fold_right (fun e acc =>
-                                    match e with
-                                    | pair (pair t1 e1) (pair t2 e2) =>
-                                      match eval_iop t1 iop e1 e2 with
-                                      | inl error => failwith error
-                                      | inr val => val
-                                      end :: acc
-                                    end)
-                                 [] (List.combine elts1 elts2)) in
-        DV (VALUE_Vector vec)
+      (* 
+      let vec :=
+          List.fold_right (fun e acc =>
+                             match e with
+                             | pair (pair t1 e1) (pair t2 e2) =>
+                               match eval_iop t1 iop e1 e2 with
+                               | inl error => failwith error
+                               | inr val => pair t1 val
+                               end :: acc
+                             end)
+                          [] (List.combine elts1 elts2) in
+      mret (DV (VALUE_Vector vec)) *)
+      failwith "Vectors unimplemented"
     | _, _, _ => failwith "ill_typed-iop"
     end.
 
@@ -398,8 +410,41 @@ Module StepSemantics(A:ADDR).
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_cmp 64 icmp i1 i2
     | _, _, _ => failwith "ill_typed-icmp"
     end.
-
-  Definition eval_fop (fop:fbinop) (v1:value) (v2:value) : err value := failwith "eval_fop not implemented".
+  
+  Definition double_op (fop:fbinop) (v1:ll_double) (v2:ll_double) : err value :=
+    match fop with
+    | FAdd => mret (DVALUE_Double (Float.add v1 v2))
+    | FSub => mret (DVALUE_Double (Float.sub v1 v2))
+    | FMul => mret (DVALUE_Double (Float.mul v1 v2))
+    | FDiv => mret (DVALUE_Double (Float.div v1 v2))
+    | FRem => failwith "unimplemented"
+    end.
+  
+  Definition float_op (fop:fbinop) (v1:ll_float) (v2:ll_float) : err value :=
+    match fop with
+    | FAdd => mret (DVALUE_Float (Float32.add v1 v2))
+    | FSub => mret (DVALUE_Float (Float32.sub v1 v2))
+    | FMul => mret (DVALUE_Float (Float32.mul v1 v2))
+    | FDiv => mret (DVALUE_Float (Float32.div v1 v2))
+    | FRem => failwith "unimplemented"
+    end.
+  
+  Definition eval_fop t (fop:fbinop) (v1:value) (v2:value) : err value :=
+    (* See Ollvm_ast.float. It seems like this is the written constant float.
+       How far do we want to take floats for the time being? If we stick to
+       compcert, is it okay to just make Ollvm_ast.float be compcert doubles,
+       since that's the largest they implemented in the lib? If not, should
+       we use flocq, like compcert? 
+    match t, v1, v2 with
+    | TYPE_Float, DV (VALUE_Float f1), DV (VALUE_Float f2) =>
+      
+    | TYPE_Float, DVALUE_Float f1, DVALUE_Float f2 => float_op fop f1 f2
+    | TYPE_Double, DV (VALUE_Float d1), DV (VALUE_Float d2) =>
+      
+    | TYPE_Double, DVALUE_Double d1, DVALUE_Double d2 => double_op fop d1 d2
+    | _, _, _ => failwith "ill_typed-fop"
+    end. *)
+    failwith "unimplemented"
 
   Definition eval_fcmp (fcmp:fcmp) (v1:value) (v2:value) : err value := failwith "eval_fcmp not implemented".
 
@@ -497,12 +542,12 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
   | OP_FBinop fop fm t op1 op2 =>
     'v1 <- f e op1;
     'v2 <- f e op2;
-    (eval_fop fop) v1 v2
+    (eval_fop t fop) v1 v2
 
   | OP_FCmp fcmp t op1 op2 => 
     'v1 <- f e op1;
     'v2 <- f e op2;
-    (eval_fcmp fcmp) v1 v2
+    (eval_fcmp t fcmp) v1 v2
               
   | OP_Conversion conv t1 op t2 =>
     'v <- f e op
