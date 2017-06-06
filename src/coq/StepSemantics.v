@@ -306,8 +306,8 @@ Module StepSemantics(A:ADDR).
     | 64 => mret (Int64.repr i)
     | _ => failwith "unsupported integer size"
     end.
-        
-  Definition eval_iop t iop v1 v2 : err value :=
+  
+  Fixpoint eval_iop t iop v1 v2 : err value :=
     match t, v1, v2 with
     | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
       'v1 <- coerce_integer_to_int bits i1;
@@ -316,6 +316,19 @@ Module StepSemantics(A:ADDR).
     | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
     | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_op 32 iop i1 i2
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_op 64 iop i1 i2
+    | TYPE_Vector s (TYPE_I 1), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
+    | TYPE_Vector s (TYPE_I 32), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
+    | TYPE_Vector s (TYPE_I 64), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2) =>
+      let vec := List.fold_right (fun e acc =>
+                                    match e with
+                                    | pair (pair t1 e1) (pair t2 e2) =>
+                                      match eval_iop t1 iop e1 e2 with
+                                      | inl error => failwith error
+                                      | inr val => val
+                                      end :: acc
+                                    end)
+                                 [] (List.combine elts1 elts2)) in
+        DV (VALUE_Vector vec)
     | _, _, _ => failwith "ill_typed-iop"
     end.
 
