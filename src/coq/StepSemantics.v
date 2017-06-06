@@ -38,8 +38,6 @@ Module Int64 := Integers.Int64.
 Module Int32 := Integers.Int.
 Module Int1 := Make(Wordsize1).
 
-Print Int1.
-
 Definition int1 := Int1.int.
 Definition int32 := Int32.int.
 Definition int64 := Int64.int.
@@ -66,6 +64,7 @@ Module StepSemantics(A:ADDR).
     | DVALUE_I1 (x:int1)
     | DVALUE_I32 (x:int32)
     | DVALUE_I64 (x:int64)
+    | DVALUE_Poison
     .
   
     Module ET : Vellvm.Effects.EffT
@@ -121,8 +120,8 @@ Module StepSemantics(A:ADDR).
   (* TODO: implement LLVM semantics *)
 
 
-  (* Temporary workaround, but how can the duplication 
-     be abstracted (fun of type Module -> Int)? *)
+  (* Since modules are not first class, this code duplication
+     will probably have to do. *)
   Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
     DVALUE_I1
       match iop with
@@ -160,24 +159,70 @@ Module StepSemantics(A:ADDR).
       end.
 
   Definition eval_i64_op (iop:ibinop) (x y:inttyp 64) : value:=
-    DVALUE_I64
-      match iop with
-      | Add _ _ => Int64.add x y
-      | Sub _ _ => Int64.sub x y
-      | Mul _ _ => Int64.mul x y
-      | Shl _ _ => Int64.shl x y
-      | UDiv _ => Int64.divu x y
-      | SDiv _ => Int64.divs x y
-      | LShr _ => Int64.shl x y
-      | AShr _ => Int64.shr x y
-      | URem => Int64.modu x y
-      | SRem => Int64.mods x y
-      | And => Int64.and x y
-      | Or => Int64.or x y
-      | Xor => Int64.xor x y
-      end.
-  (* Having trouble with this approach. Why is it that bits isn't being 
-     "plugged in" to the type of x and y in the pattern match?*)
+    (* This needs to be tested *)
+    match iop with
+    | Add nuw nsw =>
+      if orb (andb nuw (Int64.eq (Int64.add_carry x y Int64.zero) Int64.one))
+             (andb nsw (Int64.eq (Int64.add_overflow x y Int64.zero) Int64.one))
+      then DVALUE_Poison else DVALUE_I64 (Int64.add x y)
+    | Sub nuw nsw =>
+      if orb (andb nuw (Int64.eq (Int64.sub_borrow x y Int64.zero) Int64.one))
+             (andb nsw (Int64.eq (Int64.sub_overflow x y Int64.zero) Int64.one))
+      then DVALUE_Poison else DVALUE_I64 (Int64.sub x y)
+    | Mul nuw nsw =>
+      let res := Int64.mul x y in
+      let res_s' := (Int64.signed x) * (Int64.signed y) in
+      if orb (andb nuw ((Int64.unsigned x) * (Int64.unsigned y) >?
+                      Int64.unsigned res))
+             (andb nsw (orb (Int64.min_signed >? res_s')
+                            (res_s' >? Int64.max_signed)))
+      then DVALUE_Poison else DVALUE_I64 res
+    | Shl nuw nsw =>
+      let res := Int64.shl x y in
+      let res_u := Int64.unsigned res in
+      let res_u' := Z.shiftl (Int64.unsigned x) (Int64.unsigned y) in
+      (* Need to verify this method for checking overflow. Take sign bit.
+         Unsigned shift x right by 64 - y. If shifted x != sign bit * (2^y - 1),
+         then there is overflow. 
+         Alternative: adapt alg on p 99 of hackers 
+         delight for counting 1s rather than 0s (should just be flipping
+         bits and shifting right rather than left) *)
+      if (Int64.unsigned y) >=? 64 then DV (VALUE_Undef) 
+      else if orb (andb nuw (res_u' >? res_u))
+                  (andb nsw (negb (Z.shiftr (Int64.unsigned x)
+                                            (64 - Int64.unsigned y)
+                                   =? (Int64.unsigned (Int64.negative x))
+                                      * (Z.pow 2 (Int64.unsigned y) - 1))))
+      then DVALUE_Poison else DVALUE_I64 res
+    | UDiv ex =>
+      if andb ex (negb ((Int64.unsigned x) mod (Int64.unsigned y) =? 0))
+      then DVALUE_Poison else DVALUE_I64 (Int64.divu x y)
+    | SDiv ex =>
+      if andb ex (negb (((Int64.signed x) mod (Int64.signed y)) =? 0))
+      then DVALUE_Poison else DVALUE_I64 (Int64.divs x y)
+    | LShr ex =>
+      if (Int64.unsigned y) >=? 64 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int64.unsigned x)
+                               mod (Z.pow 2 (Int64.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I64 (Int64.shru x y)
+    | AShr ex =>
+      if (Int64.unsigned y) >=? 64 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int64.unsigned x)
+                               mod (Z.pow 2 (Int64.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I64 (Int64.shr x y)
+    | URem =>
+      DVALUE_I64 (Int64.modu x y)
+    | SRem =>
+      DVALUE_I64 (Int64.mods x y)
+    | And =>
+      DVALUE_I64 (Int64.and x y)
+    | Or =>
+      DVALUE_I64 (Int64.or x y)
+    | Xor =>
+      DVALUE_I64 (Int64.xor x y)
+    end.
+
+  (* Evaluate the given iop on the given arguments according to the bitsize *)
   Definition integer_op (bits:Z) (iop:ibinop) (x y:inttyp bits) : err value:=
     match bits, x, y with
     | 1, x, y => mret (eval_i1_op iop x y)
@@ -186,6 +231,8 @@ Module StepSemantics(A:ADDR).
     | _, _, _ => failwith "unsupported bitsize"
     end.
 
+  (* Convert written integer constant to corresponding integer with bitsize bits.
+     Takes the integer modulo 2^bits. *)
   Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) :=
     match bits with
     | 1 => mret (Int1.repr i) 
