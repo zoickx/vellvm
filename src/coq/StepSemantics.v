@@ -243,6 +243,7 @@ Module StepSemantics(A:ADDR).
   Definition eval_i64_op (iop:ibinop) (x y:inttyp 64) : value:=
     (* This needs to be tested *)
     match iop with
+    (* Following to cases are probably right since they use CompCert *)
     | Add nuw nsw =>
       if orb (andb nuw (Int64.eq (Int64.add_carry x y Int64.zero) Int64.one))
              (andb nsw (Int64.eq (Int64.add_overflow x y Int64.zero) Int64.one))
@@ -251,6 +252,7 @@ Module StepSemantics(A:ADDR).
       if orb (andb nuw (Int64.eq (Int64.sub_borrow x y Int64.zero) Int64.one))
              (andb nsw (Int64.eq (Int64.sub_overflow x y Int64.zero) Int64.one))
       then DVALUE_Poison else DVALUE_I64 (Int64.sub x y)
+    (* Checked over already, so probably right as well *)
     | Mul nuw nsw =>
       let res := Int64.mul x y in
       let res_s' := (Int64.signed x) * (Int64.signed y) in
@@ -259,6 +261,7 @@ Module StepSemantics(A:ADDR).
              (andb nsw (orb (Int64.min_signed >? res_s')
                             (res_s' >? Int64.max_signed)))
       then DVALUE_Poison else DVALUE_I64 res
+    (* Checked over nuw flag, but nsw needs to be checked per comment below. *)
     | Shl nuw nsw =>
       let res := Int64.shl x y in
       let res_u := Int64.unsigned res in
@@ -275,7 +278,10 @@ Module StepSemantics(A:ADDR).
                                             (64 - Int64.unsigned y)
                                    =? (Int64.unsigned (Int64.negative x))
                                       * (Z.pow 2 (Int64.unsigned y) - 1))))
-      then DVALUE_Poison else DVALUE_I64 res
+           then DVALUE_Poison else DVALUE_I64 res
+    (* Rest has not been checked, but since the conditions are more
+       straightforward then above, there shouldn't be much room for 
+       error. *)
     | UDiv ex =>
       if andb ex (negb ((Int64.unsigned x) mod (Int64.unsigned y) =? 0))
       then DVALUE_Poison else DVALUE_I64 (Int64.divu x y)
@@ -332,27 +338,74 @@ Module StepSemantics(A:ADDR).
     | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
     | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_op 32 iop i1 i2
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_op 64 iop i1 i2
-    | _, _, _ => failwith "ill_typed"
+    | _, _, _ => failwith "ill_typed-iop"
+    end.
+
+  (* Should the value be i1 or bool? Will go with i1 for now. *)
+  Definition eval_i1_icmp icmp x y : value :=
+    if match icmp with
+       | Eq => Int1.cmp Ceq x y
+       | Ne => Int1.cmp Cne x y
+       | Ugt => Int1.cmpu Cgt x y
+       | Uge => Int1.cmpu Cge x y
+       | Ult => Int1.cmpu Clt x y
+       | Ule => Int1.cmpu Cle x y
+       | Sgt => Int1.cmp Cgt x y
+       | Sge => Int1.cmp Cge x y
+       | Slt => Int1.cmp Clt x y
+       | Sle => Int1.cmp Cle x y
+       end
+    then DVALUE_I1 Int1.one else DVALUE_I1 Int1.zero.
+
+  Definition eval_i32_icmp icmp x y : value :=
+    if match icmp with
+       | Eq => Int32.cmp Ceq x y
+       | Ne => Int32.cmp Cne x y
+       | Ugt => Int32.cmpu Cgt x y
+       | Uge => Int32.cmpu Cge x y
+       | Ult => Int32.cmpu Clt x y
+       | Ule => Int32.cmpu Cle x y
+       | Sgt => Int32.cmp Cgt x y
+       | Sge => Int32.cmp Cge x y
+       | Slt => Int32.cmp Clt x y
+       | Sle => Int32.cmp Cle x y
+       end
+    then DVALUE_I32 Int32.one else DVALUE_I32 Int32.zero.
+
+  Definition eval_i64_icmp icmp x y : value :=
+    if match icmp with
+       | Eq => Int64.cmp Ceq x y
+       | Ne => Int64.cmp Cne x y
+       | Ugt => Int64.cmpu Cgt x y
+       | Uge => Int64.cmpu Cge x y
+       | Ult => Int64.cmpu Clt x y
+       | Ule => Int64.cmpu Cle x y
+       | Sgt => Int64.cmp Cgt x y
+       | Sge => Int64.cmp Cge x y
+       | Slt => Int64.cmp Clt x y
+       | Sle => Int64.cmp Cle x y
+       end
+    then DVALUE_I64 Int64.one else DVALUE_I64 Int64.zero.
+  
+  Definition integer_cmp bits icmp (x y:inttyp bits) : err value :=
+    match bits, x, y with
+    | 1, x, y => mret (eval_i1_icmp icmp x y)
+    | 32, x, y => mret (eval_i32_icmp icmp x y)
+    | 64, x, y => mret (eval_i64_icmp icmp x y)
+    | _, _, _ => failwith "unsupported bitsize"
     end.
 
   (* TODO: replace Coq Z with appropriate i64, i32, i1 values *)
-  Definition eval_icmp icmp v1 v2 : err value :=
-    match v1, v2 with
-    | DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
-      mret (DV (VALUE_Bool 
-                           match icmp with
-                           | Eq => Z.eqb i1 i2
-                           | Ne => negb (Z.eqb i1 i2)
-                           | Ugt => Z.gtb i1 i2
-                           | Uge => Z.leb i2 i1
-                           | Ult => Z.gtb i2 i1
-                           | Ule => Z.leb i1 i2
-                           | Sgt => Z.gtb i1 i2
-                           | Sge => Z.leb i2 i1
-                           | Slt => Z.ltb i1 i2
-                           | Sle => Z.leb i1 i2
-                           end))
-    | _, _ => failwith "eval_icmp"
+  Definition eval_icmp t icmp v1 v2 : err value :=
+    match t, v1, v2 with
+    | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
+      'v1 <- coerce_integer_to_int bits i1;
+      'v2 <- coerce_integer_to_int bits i2;
+      integer_cmp bits icmp v1 v2
+    | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_cmp 1 icmp i1 i2
+    | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_cmp 32 icmp i1 i2
+    | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_cmp 64 icmp i1 i2
+    | _, _, _ => failwith "ill_typed-icmp"
     end.
 
   Definition eval_fop (fop:fbinop) (v1:value) (v2:value) : err value := failwith "eval_fop not implemented".
@@ -397,7 +450,7 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
   | OP_ICmp cmp t op1 op2 => 
     'v1 <- f e op1;                   
     'v2 <- f e op2;
-    (eval_icmp cmp) v1 v2
+    (eval_icmp t cmp) v1 v2
 
   | OP_FBinop fop fm t op1 op2 =>
     'v1 <- f e op1;
