@@ -124,9 +124,6 @@ Module StepSemantics(A:ADDR).
      will probably have to do. *)
   Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
     (* See eval_i64_op for a few comments *)
-    (* Possibly revisit this. Is it necessary to be as stringent with checks? 
-       What does signed i1 mean? Can i1 overflow multiplication? Can i1
-       Bit shift at all? *)
     match iop with
     | Add nuw nsw =>
       if orb (andb nuw (Int1.eq (Int1.add_carry x y Int1.zero) Int1.one))
@@ -137,40 +134,21 @@ Module StepSemantics(A:ADDR).
              (andb nsw (Int1.eq (Int1.sub_overflow x y Int1.zero) Int1.one))
       then DVALUE_Poison else DVALUE_I1 (Int1.sub x y)
     | Mul nuw nsw =>
-      let res := Int1.mul x y in
-      let res_s' := (Int1.signed x) * (Int1.signed y) in
-      if orb (andb nuw ((Int1.unsigned x) * (Int1.unsigned y) >?
-                      Int1.unsigned res))
-             (andb nsw (orb (Int1.min_signed >? res_s')
-                            (res_s' >? Int1.max_signed)))
-      then DVALUE_Poison else DVALUE_I1 res
+      (* I1 mul can't overflow, just based on the 4 possible multiplications. *)
+      DVALUE_I1 (Int1.mul x y)
     | Shl nuw nsw =>
-      let res := Int1.shl x y in
-      let res_u := Int1.unsigned res in
-      let res_u' := Z.shiftl (Int1.unsigned x) (Int1.unsigned y) in
-      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef) 
-      else if orb (andb nuw (res_u' >? res_u))
-                  (andb nsw (negb (Z.shiftr (Int1.unsigned x)
-                                            (1 - Int1.unsigned y)
-                                   =? (Int1.unsigned (Int1.negative x))
-                                      * (Z.pow 2 (Int1.unsigned y) - 1))))
-      then DVALUE_Poison else DVALUE_I1 res
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef) else DVALUE_I1 x
     | UDiv ex =>
       if andb ex (negb ((Int1.unsigned x) mod (Int1.unsigned y) =? 0))
       then DVALUE_Poison else DVALUE_I1 (Int1.divu x y)
     | SDiv ex =>
+      (* What does signed i1 mean? *)
       if andb ex (negb (((Int1.signed x) mod (Int1.signed y)) =? 0))
       then DVALUE_Poison else DVALUE_I1 (Int1.divs x y)
     | LShr ex =>
-      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef)
-      else if andb ex (negb ((Int1.unsigned x)
-                               mod (Z.pow 2 (Int1.unsigned y)) =? 0))
-      then DVALUE_Poison else DVALUE_I1 (Int1.shru x y)
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef) else DVALUE_I1 x
     | AShr ex =>
-      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef)
-      else if andb ex (negb ((Int1.unsigned x)
-                               mod (Z.pow 2 (Int1.unsigned y)) =? 0))
-      then DVALUE_Poison else DVALUE_I1 (Int1.shr x y)
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef) else DVALUE_I1 x
     | URem =>
       DVALUE_I1 (Int1.modu x y)
     | SRem =>
@@ -280,7 +258,7 @@ Module StepSemantics(A:ADDR).
                                       * (Z.pow 2 (Int64.unsigned y) - 1))))
            then DVALUE_Poison else DVALUE_I64 res
     (* Rest has not been checked, but since the conditions are more
-       straightforward then above, there shouldn't be much room for 
+       straightforward than above, there shouldn't be much room for 
        error. *)
     | UDiv ex =>
       if andb ex (negb ((Int64.unsigned x) mod (Int64.unsigned y) =? 0))
