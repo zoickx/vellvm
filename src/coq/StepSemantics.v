@@ -123,40 +123,122 @@ Module StepSemantics(A:ADDR).
   (* Since modules are not first class, this code duplication
      will probably have to do. *)
   Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
-    DVALUE_I1
-      match iop with
-      | Add _ _ => Int1.add x y
-      | Sub _ _ => Int1.sub x y
-      | Mul _ _ => Int1.mul x y
-      | Shl _ _ => Int1.shl x y
-      | UDiv _ => Int1.divu x y
-      | SDiv _ => Int1.divs x y
-      | LShr _ => Int1.shl x y
-      | AShr _ => Int1.shr x y
-      | URem => Int1.modu x y
-      | SRem => Int1.mods x y
-      | And => Int1.and x y
-      | Or => Int1.or x y
-      | Xor => Int1.xor x y
-      end.
+    (* See eval_i64_op for a few comments *)
+    (* Possibly revisit this. Is it necessary to be as stringent with checks? 
+       What does signed i1 mean? Can i1 overflow multiplication? Can i1
+       Bit shift at all? *)
+    match iop with
+    | Add nuw nsw =>
+      if orb (andb nuw (Int1.eq (Int1.add_carry x y Int1.zero) Int1.one))
+             (andb nsw (Int1.eq (Int1.add_overflow x y Int1.zero) Int1.one))
+      then DVALUE_Poison else DVALUE_I1 (Int1.add x y)
+    | Sub nuw nsw =>
+      if orb (andb nuw (Int1.eq (Int1.sub_borrow x y Int1.zero) Int1.one))
+             (andb nsw (Int1.eq (Int1.sub_overflow x y Int1.zero) Int1.one))
+      then DVALUE_Poison else DVALUE_I1 (Int1.sub x y)
+    | Mul nuw nsw =>
+      let res := Int1.mul x y in
+      let res_s' := (Int1.signed x) * (Int1.signed y) in
+      if orb (andb nuw ((Int1.unsigned x) * (Int1.unsigned y) >?
+                      Int1.unsigned res))
+             (andb nsw (orb (Int1.min_signed >? res_s')
+                            (res_s' >? Int1.max_signed)))
+      then DVALUE_Poison else DVALUE_I1 res
+    | Shl nuw nsw =>
+      let res := Int1.shl x y in
+      let res_u := Int1.unsigned res in
+      let res_u' := Z.shiftl (Int1.unsigned x) (Int1.unsigned y) in
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef) 
+      else if orb (andb nuw (res_u' >? res_u))
+                  (andb nsw (negb (Z.shiftr (Int1.unsigned x)
+                                            (1 - Int1.unsigned y)
+                                   =? (Int1.unsigned (Int1.negative x))
+                                      * (Z.pow 2 (Int1.unsigned y) - 1))))
+      then DVALUE_Poison else DVALUE_I1 res
+    | UDiv ex =>
+      if andb ex (negb ((Int1.unsigned x) mod (Int1.unsigned y) =? 0))
+      then DVALUE_Poison else DVALUE_I1 (Int1.divu x y)
+    | SDiv ex =>
+      if andb ex (negb (((Int1.signed x) mod (Int1.signed y)) =? 0))
+      then DVALUE_Poison else DVALUE_I1 (Int1.divs x y)
+    | LShr ex =>
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int1.unsigned x)
+                               mod (Z.pow 2 (Int1.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I1 (Int1.shru x y)
+    | AShr ex =>
+      if (Int1.unsigned y) >=? 1 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int1.unsigned x)
+                               mod (Z.pow 2 (Int1.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I1 (Int1.shr x y)
+    | URem =>
+      DVALUE_I1 (Int1.modu x y)
+    | SRem =>
+      DVALUE_I1 (Int1.mods x y)
+    | And =>
+      DVALUE_I1 (Int1.and x y)
+    | Or =>
+      DVALUE_I1 (Int1.or x y)
+    | Xor =>
+      DVALUE_I1 (Int1.xor x y)
+    end.
 
   Definition eval_i32_op (iop:ibinop) (x y:inttyp 32) : value:=
-    DVALUE_I32
-      match iop with
-      | Add _ _ => Int32.add x y
-      | Sub _ _ => Int32.sub x y
-      | Mul _ _ => Int32.mul x y
-      | Shl _ _ => Int32.shl x y
-      | UDiv _ => Int32.divu x y
-      | SDiv _ => Int32.divs x y
-      | LShr _ => Int32.shl x y
-      | AShr _ => Int32.shr x y
-      | URem => Int32.modu x y
-      | SRem => Int32.mods x y
-      | And => Int32.and x y
-      | Or => Int32.or x y
-      | Xor => Int32.xor x y
-      end.
+    match iop with
+    | Add nuw nsw =>
+      if orb (andb nuw (Int32.eq (Int32.add_carry x y Int32.zero) Int32.one))
+             (andb nsw (Int32.eq (Int32.add_overflow x y Int32.zero) Int32.one))
+      then DVALUE_Poison else DVALUE_I32 (Int32.add x y)
+    | Sub nuw nsw =>
+      if orb (andb nuw (Int32.eq (Int32.sub_borrow x y Int32.zero) Int32.one))
+             (andb nsw (Int32.eq (Int32.sub_overflow x y Int32.zero) Int32.one))
+      then DVALUE_Poison else DVALUE_I32 (Int32.sub x y)
+    | Mul nuw nsw =>
+      let res := Int32.mul x y in
+      let res_s' := (Int32.signed x) * (Int32.signed y) in
+      if orb (andb nuw ((Int32.unsigned x) * (Int32.unsigned y) >?
+                      Int32.unsigned res))
+             (andb nsw (orb (Int32.min_signed >? res_s')
+                            (res_s' >? Int32.max_signed)))
+      then DVALUE_Poison else DVALUE_I32 res
+    | Shl nuw nsw =>
+      let res := Int32.shl x y in
+      let res_u := Int32.unsigned res in
+      let res_u' := Z.shiftl (Int32.unsigned x) (Int32.unsigned y) in
+      if (Int32.unsigned y) >=? 32 then DV (VALUE_Undef) 
+      else if orb (andb nuw (res_u' >? res_u))
+                  (andb nsw (negb (Z.shiftr (Int32.unsigned x)
+                                            (32 - Int32.unsigned y)
+                                   =? (Int32.unsigned (Int32.negative x))
+                                      * (Z.pow 2 (Int32.unsigned y) - 1))))
+      then DVALUE_Poison else DVALUE_I32 res
+    | UDiv ex =>
+      if andb ex (negb ((Int32.unsigned x) mod (Int32.unsigned y) =? 0))
+      then DVALUE_Poison else DVALUE_I32 (Int32.divu x y)
+    | SDiv ex =>
+      if andb ex (negb (((Int32.signed x) mod (Int32.signed y)) =? 0))
+      then DVALUE_Poison else DVALUE_I32 (Int32.divs x y)
+    | LShr ex =>
+      if (Int32.unsigned y) >=? 32 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int32.unsigned x)
+                               mod (Z.pow 2 (Int32.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I32 (Int32.shru x y)
+    | AShr ex =>
+      if (Int32.unsigned y) >=? 32 then DV (VALUE_Undef)
+      else if andb ex (negb ((Int32.unsigned x)
+                               mod (Z.pow 2 (Int32.unsigned y)) =? 0))
+      then DVALUE_Poison else DVALUE_I32 (Int32.shr x y)
+    | URem =>
+      DVALUE_I32 (Int32.modu x y)
+    | SRem =>
+      DVALUE_I32 (Int32.mods x y)
+    | And =>
+      DVALUE_I32 (Int32.and x y)
+    | Or =>
+      DVALUE_I32 (Int32.or x y)
+    | Xor =>
+      DVALUE_I32 (Int32.xor x y)
+    end.
 
   Definition eval_i64_op (iop:ibinop) (x y:inttyp 64) : value:=
     (* This needs to be tested *)
