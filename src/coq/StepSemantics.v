@@ -71,8 +71,8 @@ Module StepSemantics(A:ADDR).
     | DVALUE_I1 (x:int1)
     | DVALUE_I32 (x:int32)
     | DVALUE_I64 (x:int64)
-    | DVALUE_Double (x:ll_double)
-    | DVALUE_Float (x:ll_float)
+  (*| DVALUE_Double (x:ll_double)
+    | DVALUE_Float (x:ll_float)*)
     | DVALUE_Poison
     .
   
@@ -239,7 +239,6 @@ Module StepSemantics(A:ADDR).
       if orb (andb nuw (Int64.eq (Int64.sub_borrow x y Int64.zero) Int64.one))
              (andb nsw (Int64.eq (Int64.sub_overflow x y Int64.zero) Int64.one))
       then DVALUE_Poison else DVALUE_I64 (Int64.sub x y)
-    (* Checked over already, so probably right as well *)
     | Mul nuw nsw =>
       let res := Int64.mul x y in
       let res_s' := (Int64.signed x) * (Int64.signed y) in
@@ -248,7 +247,6 @@ Module StepSemantics(A:ADDR).
              (andb nsw (orb (Int64.min_signed >? res_s')
                             (res_s' >? Int64.max_signed)))
       then DVALUE_Poison else DVALUE_I64 res
-    (* Checked over nuw flag, but nsw needs to be checked per comment below. *)
     | Shl nuw nsw =>
       let res := Int64.shl x y in
       let res_u := Int64.unsigned res in
@@ -415,7 +413,7 @@ Module StepSemantics(A:ADDR).
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_cmp 64 icmp i1 i2
     | _, _, _ => failwith "ill_typed-icmp"
     end.
-  
+  (*
   Definition double_op (fop:fbinop) (v1:ll_double) (v2:ll_double) : err value :=
     match fop with
     | FAdd => mret (DVALUE_Double (Float.add v1 v2))
@@ -432,7 +430,7 @@ Module StepSemantics(A:ADDR).
     | FMul => mret (DVALUE_Float (Float32.mul v1 v2))
     | FDiv => mret (DVALUE_Float (Float32.div v1 v2))
     | FRem => failwith "unimplemented"
-    end.
+    end.*)
   
   Definition eval_fop (t:typ) (fop:fbinop) (v1:value) (v2:value) : err value :=
     (* This can be revisited. Ollvm_ast.v needs to be updated. 

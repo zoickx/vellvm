@@ -60,7 +60,10 @@ let parse_files =
   [  ]
 
 let test_dirs =
-  [  ]
+  ["../tests/ll/";
+   "../tests/llvm_arith/i1/";
+   "../tests/llvm_arith/i32/";
+   "../tests/llvm_arith/i64/"]
 
 let suite = [Test ("Parsing", List.map (fun f -> (f, fun () -> parse_pp_test f)) parse_files)] @
             (List.map pp_test_of_dir test_dirs)

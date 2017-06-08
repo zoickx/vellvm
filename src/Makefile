@@ -69,7 +69,7 @@ vellvm: main.native
 	cp main.native vellvm
 
 test: vellvm
-	./vellvm --test-pp-dir ../tests/ll
+	./vellvm --test
 
 print-includes:
 	@echo $(COQINCLUDES)
