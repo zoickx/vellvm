@@ -14,7 +14,7 @@ MENHIR=menhir
 CP=cp
 
 
-IMPCOQFILES := Imp ImpCEvalFun Maps Compiler CompilerProp 
+IMPCOQFILES := Imp ImpCEvalFun Maps Compiler #CompilerProp 
 COQFILES := Ollvm_ast Classes Util Misc AstLib Dom CFG CFGProp Effects StepSemantics Memory DeadInstr Transform $(IMPCOQFILES)
 OLLVMFILES := 
 

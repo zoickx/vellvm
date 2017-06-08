@@ -22,7 +22,7 @@ Module Type EffT.
   Parameter typ : Set.
   Parameter addr : Set.
   Parameter value : Set.
-  Parameter inj_addr: addr -> value.
+  Parameter inj_addr: typ -> addr -> value.
 End EffT.
 
 Module Effects(ET:EffT).
@@ -101,7 +101,7 @@ Arguments id_obs_eq {_} _ .
 
 (* Error predicate, which says whether an observation trace leads to an error *)
 Inductive obs_error_free_mem_step {A} (R: Obs A -> Prop) : effects (Obs A) -> Prop :=
-| obs_error_free_mem_Alloca : forall t f, (forall (a:addr), R (f (inj_addr a))) -> obs_error_free_mem_step R (Alloca t f)
+| obs_error_free_mem_Alloca : forall t f, (forall (a:addr), R (f (inj_addr t a))) -> obs_error_free_mem_step R (Alloca t f)
 | obs_error_free_mem_Load   : forall a f, (forall (dv:value), R (f dv)) -> obs_error_free_mem_step R (Load a f)
 | obs_error_free_mem_Store  : forall a n d, R d -> obs_error_free_mem_step R (Store a n d)
 | obs_error_free_mem_Call   : forall v vs f, (forall (dv:value), R (f dv)) -> obs_error_free_mem_step R (Call v vs f)
@@ -136,7 +136,7 @@ Hint Resolve obs_error_free_gen_mon : paco.
     - have a value relation  V : value -> value -> Prop
 *)
 Inductive obs_equiv_mem_step {A} (R:Obs A -> Obs A -> Prop) : effects (Obs A) -> effects (Obs A) -> Prop :=
-| obs_equiv_mem_Alloca : forall t f g, (forall (a:addr), R (f (inj_addr a)) (g (inj_addr a))) -> obs_equiv_mem_step R (Alloca t f) (Alloca t g)
+| obs_equiv_mem_Alloca : forall t f g, (forall (a:addr), R (f (inj_addr t a)) (g (inj_addr t a))) -> obs_equiv_mem_step R (Alloca t f) (Alloca t g)
 | obs_equiv_mem_Load  : forall a f g, (forall (dv:value), R (f dv) (g dv)) -> obs_equiv_mem_step R (Load a f) (Load a g)
 | obs_equiv_mem_Store : forall a n d1 d2, (R d1 d2) -> obs_equiv_mem_step R (Store a n d1) (Store a n d2)
 | obs_equiv_mem_Call  : forall v vs f g, (forall (dv:value), R (f dv) (g dv)) -> obs_equiv_mem_step R (Call v vs f) (Call v vs g)

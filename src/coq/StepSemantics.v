@@ -67,7 +67,7 @@ Module StepSemantics(A:ADDR).
     Inductive dvalue : Set :=
     | DV : Expr dvalue -> dvalue
     | DVALUE_CodePointer (p : pc)
-    | DVALUE_Addr (a:A.addr)
+    | DVALUE_Addr (t:typ) (a:A.addr)
     | DVALUE_I1 (x:int1)
     | DVALUE_I32 (x:int32)
     | DVALUE_I64 (x:int64)
@@ -196,7 +196,7 @@ Module StepSemantics(A:ADDR).
       else if orb (andb nuw (res_u' >? res_u))
                   (andb nsw (negb (Z.shiftr (Int32.unsigned x)
                                             (32 - Int32.unsigned y)
-                                   =? (Int32.unsigned (Int32.negative x))
+                                   =? (Int32.unsigned (Int32.negative res))
                                       * (Z.pow 2 (Int32.unsigned y) - 1))))
       then DVALUE_Poison else DVALUE_I32 res
     | UDiv ex =>
@@ -253,22 +253,15 @@ Module StepSemantics(A:ADDR).
       let res := Int64.shl x y in
       let res_u := Int64.unsigned res in
       let res_u' := Z.shiftl (Int64.unsigned x) (Int64.unsigned y) in
-      (* Need to verify this method for checking overflow. Take sign bit.
-         Unsigned shift x right by 64 - y. If shifted x != sign bit * (2^y - 1),
-         then there is overflow. 
-         Alternative: adapt alg on p 99 of hackers 
-         delight for counting 1s rather than 0s (should just be flipping
-         bits and shifting right rather than left) *)
+      (* Unsigned shift x right by 64 - y. If shifted x != sign bit * (2^y - 1),
+         then there is overflow. *)
       if (Int64.unsigned y) >=? 64 then DV (VALUE_Undef) 
       else if orb (andb nuw (res_u' >? res_u))
                   (andb nsw (negb (Z.shiftr (Int64.unsigned x)
                                             (64 - Int64.unsigned y)
-                                   =? (Int64.unsigned (Int64.negative x))
+                                   =? (Int64.unsigned (Int64.negative res))
                                       * (Z.pow 2 (Int64.unsigned y) - 1))))
            then DVALUE_Poison else DVALUE_I64 res
-    (* Rest has not been checked, but since the conditions are more
-       straightforward than above, there shouldn't be much room for 
-       error. *)
     | UDiv ex =>
       if andb ex (negb ((Int64.unsigned x) mod (Int64.unsigned y) =? 0))
       then DVALUE_Poison else DVALUE_I64 (Int64.divu x y)
@@ -315,8 +308,25 @@ Module StepSemantics(A:ADDR).
     | 64 => mret (Int64.repr i)
     | _ => failwith "unsupported integer size"
     end.
-  
-  Fixpoint eval_iop t iop v1 v2 : err value :=
+
+  (* Helper for looping 2 argument evaluation over vectors, producing a vector *)
+  Fixpoint vec_loop (f:dvalue -> dvalue -> err dvalue)
+           (elts:list ((typ * dvalue) * (typ * dvalue)))
+    : err (list (typ * dvalue)) :=
+    match elts with
+    | [] => mret []
+    | e :: tl =>
+      match e with
+      | pair (pair t1 e1) (pair t2 e2) =>
+        'val <- f e1 e2;
+        'vec <- vec_loop f tl;
+        mret (pair t1 val :: vec)
+      end
+    end.
+
+  (* Integer iop evaluation, called from eval_iop. 
+     Here the values must be integers. *)
+  Definition eval_iop_integer t iop v1 v2 : err value :=
     match t, v1, v2 with
     | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
       'v1 <- coerce_integer_to_int bits i1;
@@ -325,26 +335,22 @@ Module StepSemantics(A:ADDR).
     | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
     | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_op 32 iop i1 i2
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_op 64 iop i1 i2
-    | TYPE_Vector s (TYPE_I 1), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
-    | TYPE_Vector s (TYPE_I 32), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
-    | TYPE_Vector s (TYPE_I 64), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2) =>
-      (* 
-      let vec :=
-          List.fold_right (fun e acc =>
-                             match e with
-                             | pair (pair t1 e1) (pair t2 e2) =>
-                               match eval_iop t1 iop e1 e2 with
-                               | inl error => failwith error
-                               | inr val => pair t1 val
-                               end :: acc
-                             end)
-                          [] (List.combine elts1 elts2) in
-      mret (DV (VALUE_Vector vec)) *)
-      failwith "Vectors unimplemented"
     | _, _, _ => failwith "ill_typed-iop"
     end.
 
-  (* Should the value be i1 or bool? Will go with i1 for now. *)
+  (* I split the definition between the vector and other evaluations because
+     otherwise eval_iop should be recursive to allow for vector calculations, 
+     but coq can't find a fixpoint. *)
+  Definition eval_iop t iop v1 v2 : err value :=
+    match t, v1, v2 with
+    | TYPE_Vector s (TYPE_I 1), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
+    | TYPE_Vector s (TYPE_I 32), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
+    | TYPE_Vector s (TYPE_I 64), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2) =>
+      'val <- vec_loop (eval_iop_integer t iop) (List.combine elts1 elts2);
+      mret (DV (VALUE_Vector val))
+    | _, _, _ => eval_iop_integer t iop v1 v2
+    end.
+  
   Definition eval_i1_icmp icmp x y : value :=
     if match icmp with
        | Eq => Int1.cmp Ceq x y
@@ -373,7 +379,7 @@ Module StepSemantics(A:ADDR).
        | Slt => Int32.cmp Clt x y
        | Sle => Int32.cmp Cle x y
        end
-    then DVALUE_I32 Int32.one else DVALUE_I32 Int32.zero.
+    then DVALUE_I1 Int1.one else DVALUE_I1 Int1.zero.
 
   Definition eval_i64_icmp icmp x y : value :=
     if match icmp with
@@ -388,7 +394,7 @@ Module StepSemantics(A:ADDR).
        | Slt => Int64.cmp Clt x y
        | Sle => Int64.cmp Cle x y
        end
-    then DVALUE_I64 Int64.one else DVALUE_I64 Int64.zero.
+    then DVALUE_I1 Int1.one else DVALUE_I1 Int1.zero.
   
   Definition integer_cmp bits icmp (x y:inttyp bits) : err value :=
     match bits, x, y with
@@ -398,7 +404,6 @@ Module StepSemantics(A:ADDR).
     | _, _, _ => failwith "unsupported bitsize"
     end.
 
-  (* TODO: replace Coq Z with appropriate i64, i32, i1 values *)
   Definition eval_icmp t icmp v1 v2 : err value :=
     match t, v1, v2 with
     | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
@@ -429,12 +434,8 @@ Module StepSemantics(A:ADDR).
     | FRem => failwith "unimplemented"
     end.
   
-  Definition eval_fop t (fop:fbinop) (v1:value) (v2:value) : err value :=
-    (* See Ollvm_ast.float. It seems like this is the written constant float.
-       How far do we want to take floats for the time being? If we stick to
-       compcert, is it okay to just make Ollvm_ast.float be compcert doubles,
-       since that's the largest they implemented in the lib? If not, should
-       we use flocq, like compcert? 
+  Definition eval_fop (t:typ) (fop:fbinop) (v1:value) (v2:value) : err value :=
+    (* This can be revisited. Ollvm_ast.v needs to be updated. 
     match t, v1, v2 with
     | TYPE_Float, DV (VALUE_Float f1), DV (VALUE_Float f2) =>
       
@@ -444,7 +445,7 @@ Module StepSemantics(A:ADDR).
     | TYPE_Double, DVALUE_Double d1, DVALUE_Double d2 => double_op fop d1 d2
     | _, _, _ => failwith "ill_typed-fop"
     end. *)
-    failwith "unimplemented"
+    failwith "unimplemented".
 
   Definition eval_fcmp (fcmp:fcmp) (v1:value) (v2:value) : err value := failwith "eval_fcmp not implemented".
 
@@ -480,22 +481,42 @@ Module StepSemantics(A:ADDR).
         mret (DVALUE_I64 (Int64.repr (Int32.signed i1)))
       | _, _, _ => failwith "ill typed-conv"
       end
+    | Bitcast =>
+      match t1, x, t2 with
+      | TYPE_I bits1, x, TYPE_I bits2 =>
+        if bits1 =? bits2 then mret x else failwith "unequal bitsize in cast"
+      | TYPE_Pointer t1, DVALUE_Addr t a, TYPE_Pointer t2 =>
+        (* Why did we need dynamic type information in the pointer? *)
+        (* How do we enforce that pointer size is the same? *)
+        mret (DVALUE_Addr t2 a) 
+      | _, _, _ => failwith "ill-typed_conv"
+      end
+    | Inttoptr
+    | Ptrtoint
     | Fptrunc
     | Fpext
     | Uitofp
     | Sitofp
     | Fptoui
-    | Fptosi
-    | Inttoptr
-    | Ptrtoint
-    | Bitcast => failwith "unimplemented conv"
+    | Fptosi => failwith "unimplemented conv"
     end.
   
   Definition eval_conv conv t1 x t2 : err value :=
     match t1, x with
-    | TYPE_I bits, VALUE_Integer x =>
+    | TYPE_I bits, DV (VALUE_Integer x) =>
       'v <- coerce_integer_to_int bits x;
-      eval_conv_h conv t1 v t2
+      match bits, v with
+      | 1, v =>
+        eval_conv_h conv t1 (DVALUE_I1 v) t2
+      | 32, v =>
+        eval_conv_h conv t1 (DVALUE_I32 v) t2
+      | 64, v =>
+        eval_conv_h conv t1 (DVALUE_I64 v) t2
+      | _, _ => failwith "unsupported bitwidth"
+      end
+    | TYPE_Vector s t, DV (VALUE_Vector elts) =>
+      (* In the future, implement bitcast and etc with vectors *)
+      failwith "vectors unimplemented"
     | _, _ => eval_conv_h conv t1 x t2
     end.
 
@@ -547,12 +568,12 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
   | OP_FCmp fcmp t op1 op2 => 
     'v1 <- f e op1;
     'v2 <- f e op2;
-    (eval_fcmp t fcmp) v1 v2
+    (eval_fcmp fcmp) v1 v2
               
   | OP_Conversion conv t1 op t2 =>
-    'v <- f e op
+    'v <- f e op;
     (eval_conv conv) t1 v t2
-      
+                       
   | OP_GetElementPtr t ptrval idxs =>
     'vptr <- monad_app_snd (f e) ptrval;
     'vs <- map_monad (monad_app_snd (f e)) idxs;
@@ -699,7 +720,7 @@ Fixpoint stepD (CFG:mcfg) (s:state) : Obs state :=
       do id <- def_id_of_pc p;  
       do dv <- eval_op e ptr;     
       match dv with
-      | DVALUE_Addr a => Eff (Load a (fun dv => Ret (pc_of_pt p', (id, dv)::e, k))) 
+      | DVALUE_Addr t a => Eff (Load a (fun dv => Ret (pc_of_pt p', (id, dv)::e, k))) 
       | _ => raise "ERROR: Load got non-pointer value" p
       end
 
@@ -708,7 +729,7 @@ Fixpoint stepD (CFG:mcfg) (s:state) : Obs state :=
       do dv <- eval_op e val;
       do v <- eval_op e ptr;
       match v with 
-      | DVALUE_Addr a => Eff (Store a dv (Ret (pc_of_pt p', e, k)))
+      | DVALUE_Addr t a => Eff (Store a dv (Ret (pc_of_pt p', e, k)))
       |  _ => raise "ERROR: Store got non-pointer value" p
       end
 
