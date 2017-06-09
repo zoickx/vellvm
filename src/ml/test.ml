@@ -57,6 +57,36 @@ let pp_test_of_dir dir =
   Test ("Parsing files in: " ^ dir,
         List.map (fun f -> (f, fun () -> parse_pp_test f)) (files_of_dir dir))
 
+let poison_tests =
+  ["../tests/llvm-arith/i1/add_nsw.ll";
+   "../tests/llvm-arith/i1/add_nuw.ll";
+   "../tests/llvm-arith/i1/sub_nsw.ll";
+   "../tests/llvm-arith/i1/sub_nuw.ll";
+   "../tests/llvm-arith/i32/add_nsw.ll";
+   "../tests/llvm-arith/i32/add_nuw.ll";
+   "../tests/llvm-arith/i32/ashr_ex.ll";
+   "../tests/llvm-arith/i32/lshr_ex.ll";
+   "../tests/llvm-arith/i32/mul_nsw.ll";
+   "../tests/llvm-arith/i32/mul_nuw.ll";
+   "../tests/llvm-arith/i32/sdiv_ex.ll";
+   "../tests/llvm-arith/i32/shl_nsw.ll";
+   "../tests/llvm-arith/i32/shl_nuw.ll";
+   "../tests/llvm-arith/i32/sub_nsw.ll";
+   "../tests/llvm-arith/i32/sub_nuw.ll";
+   "../tests/llvm-arith/i32/udiv_ex.ll";
+   "../tests/llvm-arith/i64/add_nsw.ll";
+   "../tests/llvm-arith/i64/add_nuw.ll";
+   "../tests/llvm-arith/i64/ashr_ex.ll";
+   "../tests/llvm-arith/i64/lshr_ex.ll";
+   "../tests/llvm-arith/i64/mul_nsw.ll";
+   "../tests/llvm-arith/i64/mul_nuw.ll";
+   "../tests/llvm-arith/i64/sdiv_ex.ll";
+   "../tests/llvm-arith/i64/shl_nsw.ll";
+   "../tests/llvm-arith/i64/shl_nuw.ll";
+   "../tests/llvm-arith/i64/sub_nsw.ll";
+   "../tests/llvm-arith/i64/sub_nuw.ll";
+   "../tests/llvm-arith/i64/udiv_ex.ll";]
+       
 let parse_files =
   [  ]
 

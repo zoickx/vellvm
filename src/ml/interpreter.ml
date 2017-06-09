@@ -28,10 +28,10 @@ let print_int_dvalue dv : unit =
 let rec step m =
   match Lazy.force m with
   | SS.E.Tau x -> step x
-  | SS.E.Fin v -> print_int_dvalue v
+  | SS.E.Fin v -> v
   | SS.E.Err s -> failwith (Printf.sprintf "ERROR: %s" (Camlcoq.camlstring_of_coqstring s))
   | SS.E.Ret _ -> failwith "should be impossible"
-  | SS.E.Eff (SS.E.Call(f, args, k)) -> ()
+  | SS.E.Eff (SS.E.Call(f, args, k)) -> failwith "unimplemented"
   | SS.E.Eff _ -> failwith "should have been handled by the memory model"  
       
 
