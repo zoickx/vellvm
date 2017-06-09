@@ -14,7 +14,6 @@ Require Import Vellvm.Ollvm_ast Vellvm.AstLib Vellvm.CFG.
 Import ListNotations.
 
 Require Import compcert.lib.Integers.
-Require Import compcert.lib.Floats.
 
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -53,9 +52,10 @@ Definition inttyp (x:Z) : Type :=
 
 (* Rename single and double precision floating points to reflect llvm 
    naming conventions, ie doubles are compcert floats and floats are compcert
-   float32s. *)
+   float32s. 
 Definition ll_double := float.
 Definition ll_float := float32.
+*)
 
 Module StepSemantics(A:ADDR).
 
