@@ -43,10 +43,10 @@ let _ =
   Printf.printf "(* -------- Vellvm Test Harness -------- *)\n%!";
   try
     Arg.parse args (fun filename -> files := filename :: !files)
-      "USAGE: ./vellvm [options] <files>\n";
+              "USAGE: ./vellvm [options] <files>\n";
     Platform.configure ();
     process_files !files
-
+                  
   with Ran_tests -> ()
 
 

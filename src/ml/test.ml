@@ -17,6 +17,7 @@
 
 let parse_pp_test path =
   let _ = Platform.verb @@ Printf.sprintf "* processing file: %s\n" path in
+  Printf.printf "* processing file: %s\n" path;
   let filename, ext = Platform.path_to_basename_ext path in
   let vll_file = Platform.gen_name !Platform.output_path filename ".v.ll" in
   let dot_s = Platform.gen_name !Platform.output_path filename ".s" in
@@ -37,7 +38,7 @@ let parse_pp_test path =
 
 let files_of_dir path : string list =
   let tmp_file = gen_name "." ".ll_files" ".tmp" in
-  let cmd = Printf.sprintf "find %s -name \"*.ll\" -print > %s" path tmp_file in
+  let cmd = Printf.sprintf "find %s -name '*.ll' -print > %s" path tmp_file in
   let () = sh cmd raise_error in 
   let fhandle = open_in tmp_file in
   let rec loop paths =
@@ -61,11 +62,11 @@ let parse_files =
 
 let test_dirs =
   ["../tests/ll/";
-   "../tests/llvm_arith/i1/";
-   "../tests/llvm_arith/i32/";
-   "../tests/llvm_arith/i64/"]
+   "../tests/llvm-arith/i1/";
+   "../tests/llvm-arith/i32/";
+   "../tests/llvm-arith/i64/"]
 
 let suite = [Test ("Parsing", List.map (fun f -> (f, fun () -> parse_pp_test f)) parse_files)] @
-            (List.map pp_test_of_dir test_dirs)
+              (List.map pp_test_of_dir test_dirs)
 
 
