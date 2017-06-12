@@ -75,7 +75,8 @@ let add_link_file path =
 let process_ll_file path file =
   let _ = Platform.verb @@ Printf.sprintf "* processing file: %s\n" path in
   let ll_ast = parse_file path in
-  let _ = if !interpret then (Interpreter.interpret ll_ast; ()) else () in
+  let _ = if !interpret then Interpreter.print_int_dvalue (Interpreter.interpret ll_ast)
+          else () in
   let ll_ast' = transform ll_ast in
   let vll_file = Platform.gen_name !Platform.output_path file ".v.ll" in
   let _ = output_file vll_file ll_ast' in
@@ -88,7 +89,8 @@ let process_imp_file path file =
     | Datatypes.Coq_inr d -> d
     | Datatypes.Coq_inl m -> failwith ("Extracted compiler failed: " ^ (of_str m))
   in
-  let _ = if !interpret then (Interpreter.interpret ll_ast; ()) else () in
+  let _ = if !interpret then Interpreter.print_int_dvalue (Interpreter.interpret ll_ast)
+          else () in
   let ll_ast' = transform ll_ast in
   let ll_file = Platform.gen_name !Platform.output_path file ".ll" in
   let _ = output_file ll_file ll_ast' in
@@ -107,10 +109,10 @@ let process_files files =
   List.iter process_file files
 
 (* file running ---------------------------------------------------------- *)
-let run_ll_file path file =
+(* Parses and runs the ll file at the given path, returning the dvalue produced. *)
+let run_ll_file path =
   let _ = Platform.verb @@ Printf.sprintf "* running file: %s\n" path in
   let ll_ast = parse_file path in
-  let res = () in
-
+  let res = Interpreter.interpret ll_ast in
   res
             
