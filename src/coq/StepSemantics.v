@@ -299,11 +299,11 @@ Module StepSemantics(A:ADDR).
 
   (* Convert written integer constant to corresponding integer with bitsize bits.
      Takes the integer modulo 2^bits. *)
-  Definition coerce_integer_to_int (bits:Z) (i:Z) : err (inttyp bits) :=
+  Definition coerce_integer_to_int (bits:Z) (i:Z) : err dvalue :=
     match bits with
-    | 1 => mret (Int1.repr i) 
-    | 32 => mret (Int32.repr i)
-    | 64 => mret (Int64.repr i)
+    | 1 => mret (DVALUE_I1 (Int1.repr i)) 
+    | 32 => mret (DVALUE_I32 (Int32.repr i))
+    | 64 => mret (DVALUE_I64 (Int64.repr i))
     | _ => failwith "unsupported integer size"
     end.
 
@@ -323,17 +323,30 @@ Module StepSemantics(A:ADDR).
     end.
 
   (* Integer iop evaluation, called from eval_iop. 
-     Here the values must be integers. *)
-  Definition eval_iop_integer t iop v1 v2 : err value :=
+     Here the values must be integers. Helper defined
+     in order to prevent eval_iop from being recursive. *)
+  Definition eval_iop_integer_h t iop v1 v2 : err value :=
     match t, v1, v2 with
-    | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
-      'v1 <- coerce_integer_to_int bits i1;
-      'v2 <- coerce_integer_to_int bits i2;
-      integer_op bits iop v1 v2
     | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_op 1 iop i1 i2
     | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_op 32 iop i1 i2
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_op 64 iop i1 i2
     | _, _, _ => failwith "ill_typed-iop"
+    end.
+
+  (* Handles the written constant cases for ops *)
+  Definition eval_bop_integer t op v1 v2 : err value :=
+    match t, v1, v2 with
+    | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
+      'v1 <- coerce_integer_to_int bits i1;
+      'v2 <- coerce_integer_to_int bits i2;
+      op t v1 v2
+    | TYPE_I bits, DV (VALUE_Integer i1),v2 =>
+      'v1 <- coerce_integer_to_int bits i1;
+      op t v1 v2
+    | TYPE_I bits, v1, DV (VALUE_Integer i2) =>
+      'v2 <- coerce_integer_to_int bits i2;
+      op t v1 v2
+    | _,  v1, v2 => op t v1 v2
     end.
 
   (* I split the definition between the vector and other evaluations because
@@ -344,9 +357,10 @@ Module StepSemantics(A:ADDR).
     | TYPE_Vector s (TYPE_I 1), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
     | TYPE_Vector s (TYPE_I 32), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2)
     | TYPE_Vector s (TYPE_I 64), DV (VALUE_Vector elts1), DV (VALUE_Vector elts2) =>
-      'val <- vec_loop (eval_iop_integer t iop) (List.combine elts1 elts2);
+      'val <- vec_loop (eval_bop_integer t (fun t => eval_iop_integer_h t iop))
+           (List.combine elts1 elts2);
       mret (DV (VALUE_Vector val))
-    | _, _, _ => eval_iop_integer t iop v1 v2
+    | _, _, _ => (eval_bop_integer t (fun t => eval_iop_integer_h t iop)) v1 v2
     end.
   
   Definition eval_i1_icmp icmp x y : value :=
@@ -402,17 +416,18 @@ Module StepSemantics(A:ADDR).
     | _, _, _ => failwith "unsupported bitsize"
     end.
 
-  Definition eval_icmp t icmp v1 v2 : err value :=
+  (*Helper defined in order to prevent 
+    eval_icmp from being recursive. *)
+  Definition eval_icmp_h t icmp v1 v2 : err value :=
     match t, v1, v2 with
-    | TYPE_I bits, DV (VALUE_Integer i1), DV (VALUE_Integer i2) =>
-      'v1 <- coerce_integer_to_int bits i1;
-      'v2 <- coerce_integer_to_int bits i2;
-      integer_cmp bits icmp v1 v2
     | TYPE_I 1, DVALUE_I1 i1, DVALUE_I1 i2 => integer_cmp 1 icmp i1 i2
     | TYPE_I 32, DVALUE_I32 i1, DVALUE_I32 i2 => integer_cmp 32 icmp i1 i2
     | TYPE_I 64, DVALUE_I64 i1, DVALUE_I64 i2 => integer_cmp 64 icmp i1 i2
     | _, _, _ => failwith "ill_typed-icmp"
     end.
+  
+  Definition eval_icmp t icmp v1 v2 : err value :=
+    eval_bop_integer t (fun t => eval_icmp_h t icmp) v1 v2.
   (*
   Definition double_op (fop:fbinop) (v1:ll_double) (v2:ll_double) : err value :=
     match fop with
@@ -503,15 +518,7 @@ Module StepSemantics(A:ADDR).
     match t1, x with
     | TYPE_I bits, DV (VALUE_Integer x) =>
       'v <- coerce_integer_to_int bits x;
-      match bits, v with
-      | 1, v =>
-        eval_conv_h conv t1 (DVALUE_I1 v) t2
-      | 32, v =>
-        eval_conv_h conv t1 (DVALUE_I32 v) t2
-      | 64, v =>
-        eval_conv_h conv t1 (DVALUE_I64 v) t2
-      | _, _ => failwith "unsupported bitwidth"
-      end
+        eval_conv_h conv t1 v t2
     | TYPE_Vector s t, DV (VALUE_Vector elts) =>
       (* In the future, implement bitcast and etc with vectors *)
       failwith "vectors unimplemented"

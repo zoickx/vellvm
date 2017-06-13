@@ -88,7 +88,7 @@ Fixpoint fv_bexp (b:bexp) : IDSet.t :=
   | BLe a1 a2 => IDSet.union (fv a1) (fv a2)
   | BNot b => fv_bexp b
   | BAnd b1 b2 => IDSet.union (fv_bexp b1) (fv_bexp b2)
-  end.
+  end. 
 Instance FV_bexp : FV bexp := fv_bexp.
 
 Fixpoint fv_com (c:com) : IDSet.t :=
