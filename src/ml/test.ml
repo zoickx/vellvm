@@ -89,7 +89,7 @@ let poison_tests =
    "../tests/llvm-arith/i64/sub_nuw.ll";
    "../tests/llvm-arith/i64/udiv_ex.ll";]
 
-let i1_tests =
+let i1_tests : (string * int) list =
   [("../tests/llvm-arith/i1/xor.ll", 0);
    ("../tests/llvm-arith/i1/udiv.ll", 1);
    ("../tests/llvm-arith/i1/srem.ll", 0);
@@ -104,6 +104,12 @@ let i1_tests =
    ("../tests/llvm-arith/i1/arith_combo.ll", 0);
    ("../tests/llvm-arith/i1/add_twice_named.ll", 1);
    ("../tests/llvm-arith/i1/add_safe.ll", 1)]
+
+let i32_tests : (string * int) list =
+  [  ]
+
+let i64_tests : (string * int) list =
+  [  ]
     
 let parse_files =
   [  ]
@@ -133,12 +139,22 @@ let i64_test (i1:StepSemantics.int64) = function
      StepSemantics.Int64.eq i1 i2
   | _ -> false
 
-let suite = [Test ("Parsing", List.map (fun f -> (f, fun () -> parse_pp_test f)) parse_files)] @
-              (List.map pp_test_of_dir test_dirs) @
-                [Test ("Poison", List.map (fun f ->
-                                     (f, fun () -> run_dvalue_test poison_test f))
-                                          poison_tests);
-                 Test ("I1", List.map (fun (f, i) ->
-                                 (f, fun () -> 
-                                   run_dvalue_test (i1_test (Camlcoq.Z.of_sint i)) f))
-                                      i1_tests);]
+let i1_of_int i = StepSemantics.Int1.repr (Camlcoq.Z.of_sint i)
+
+let i32_of_int i = StepSemantics.Int32.repr (Camlcoq.Z.of_sint i)
+
+let i64_of_int i = StepSemantics.Int64.repr (Camlcoq.Z.of_sint i)
+                                            
+let suite = [Test ("Parsing", List.map (fun f -> (f, fun () -> parse_pp_test f)) parse_files);
+             Test ("Poison", List.map (fun f ->
+                                 (f, fun () -> run_dvalue_test poison_test f)) poison_tests);
+             Test ("I1-arith", List.map (fun (f, i) ->
+                                   (f, fun () -> run_dvalue_test (i1_test (i1_of_int i)) f))
+                                        i1_tests);
+             Test ("I32-arith", List.map (fun (f, i) ->
+                                    (f, fun () -> run_dvalue_test (i32_test (i32_of_int i)) f))
+                                         i32_tests);
+             Test ("I64-arith", List.map (fun (f, i) ->
+                                    (f, fun () -> run_dvalue_test (i64_test (i64_of_int i)) f))
+                                         i64_tests)] @
+              (List.map pp_test_of_dir test_dirs)
