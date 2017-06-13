@@ -124,6 +124,10 @@ let poison_test = function
   | SS.DVALUE_Poison -> true
   | _ -> false
 
+let undef_test = function
+  | SS.DV (Ollvm_ast.VALUE_Undef) -> true
+  | _ -> false
+
 let i1_test (i1:StepSemantics.int1) = function
   | SS.DVALUE_I1 i2 ->
      StepSemantics.Int1.eq i1 i2

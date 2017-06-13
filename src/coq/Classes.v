@@ -264,7 +264,7 @@ Next Obligation.
 Defined.
 Next Obligation.
   destruct a; try reflexivity.
-Defined.  
+Defined.
 
 Program Instance list_monad : (@Monad list) list_functor := _.
 Next Obligation.
