@@ -17,6 +17,8 @@
     of _program equivalence_ and introduce _Hoare Logic_, a widely
     used logic for reasoning about imperative programs. *)
 
+(* Edit to produce 64 bit numbers *)
+
 (* IMPORTS *)
 Set Warnings "-notation-overridden,-parsing".
 Require Import Coq.Bool.Bool.

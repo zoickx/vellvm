@@ -499,8 +499,6 @@ Module StepSemantics(A:ADDR).
       | TYPE_I bits1, x, TYPE_I bits2 =>
         if bits1 =? bits2 then mret x else failwith "unequal bitsize in cast"
       | TYPE_Pointer t1, DVALUE_Addr t a, TYPE_Pointer t2 =>
-        (* Why did we need dynamic type information in the pointer? *)
-        (* How do we enforce that pointer size is the same? *)
         mret (DVALUE_Addr t2 a) 
       | _, _, _ => failwith "ill-typed_conv"
       end
@@ -523,6 +521,13 @@ Module StepSemantics(A:ADDR).
       (* In the future, implement bitcast and etc with vectors *)
       failwith "vectors unimplemented"
     | _, _ => eval_conv_h conv t1 x t2
+    end.
+
+  Definition eval_select cnd v1 v2 : err value :=
+    match cnd with
+    | DVALUE_I1 i =>
+      mret (if Int1.unsigned i =? 1 then v1 else v2)
+    | _ => failwith "ill_typed-select"
     end.
 
 Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err value :=
@@ -583,7 +588,7 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     'vptr <- monad_app_snd (f e) ptrval;
     'vs <- map_monad (monad_app_snd (f e)) idxs;
     failwith "getelementptr not implemented"  (* TODO: Getelementptr *)  
-    
+    (* Think about structure operations *)
   | OP_ExtractElement vecop idx =>
     'vec <- monad_app_snd (f e) vecop;
     'vidx <- monad_app_snd (f e) idx;
@@ -610,11 +615,11 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     'v <- monad_app_snd (f e) eltop;
     failwith "insertvalue not implemented"
     
-  | OP_Select cndop op1 op2 =>
-    'cnd <- monad_app_snd (f e) cndop;
-    'v1 <- monad_app_snd (f e) op1;
-    'v2 <- monad_app_snd (f e) op2;      
-    failwith "select not implemented"
+  | OP_Select cndop op1 op2 => (* Do this *)
+    '(t, cnd) <- monad_app_snd (f e) cndop;
+    '(t1, v1) <- monad_app_snd (f e) op1;
+    '(t2, v2) <- monad_app_snd (f e) op2;
+    eval_select cnd v1 v2
   end.
 
 Fixpoint eval_op (e:env) (o:Ollvm_ast.value) : err value :=
