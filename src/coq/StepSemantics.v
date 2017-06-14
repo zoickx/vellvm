@@ -128,7 +128,6 @@ Module StepSemantics(A:ADDR).
   (* Arithmetic Operations ---------------------------------------------------- *)
   (* TODO: implement LLVM semantics *)
 
-
   (* Since modules are not first class, this code duplication
      will probably have to do. *)
   Definition eval_i1_op (iop:ibinop) (x y:inttyp 1) : value:=
@@ -306,22 +305,18 @@ Module StepSemantics(A:ADDR).
     | 64 => mret (DVALUE_I64 (Int64.repr i))
     | _ => failwith "unsupported integer size"
     end.
-
+  
   (* Helper for looping 2 argument evaluation over vectors, producing a vector *)
   Fixpoint vec_loop (f:dvalue -> dvalue -> err dvalue)
            (elts:list ((typ * dvalue) * (typ * dvalue)))
     : err (list (typ * dvalue)) :=
-    match elts with
-    | [] => mret []
-    | e :: tl =>
-      match e with
-      | pair (pair t1 e1) (pair t2 e2) =>
-        'val <- f e1 e2;
-        'vec <- vec_loop f tl;
-        mret (pair t1 val :: vec)
-      end
-    end.
-
+    monad_fold_left (fun acc e =>
+                       match e with
+                       | pair (pair t e1) (pair _ e2) =>
+                         'val <- f e1 e2;
+                         mret (pair t val :: acc)
+                       end) elts [].
+    
   (* Integer iop evaluation, called from eval_iop. 
      Here the values must be integers. Helper defined
      in order to prevent eval_iop from being recursive. *)
@@ -536,7 +531,7 @@ Module StepSemantics(A:ADDR).
     | TYPE_Vector _ t, TYPE_Vector _ t', DV (VALUE_Vector es),
       DV (VALUE_Vector es1), DV (VALUE_Vector es2) =>
       (* vec needs to loop over es, es1, and es2. Is there a way to
-         generalize vec_loop to cover this? *)
+         generalize vec_loop to cover this? (make v1,v2 generic?) *)
       let fix loop elts := 
           match elts with
           | [] => mret []
@@ -551,6 +546,20 @@ Module StepSemantics(A:ADDR).
       'val <- loop (List.combine es (List.combine es1 es2));
       mret (DV (VALUE_Vector val))
     | _, _, _, _, _ => eval_select_h cnd v1 v2
+    end.
+
+  (* Helper function for indexding into a structured datatype for extractvalue *)
+  Definition index_into_str (v:value) (idx:Ollvm_ast.int) : err (typ * value) :=
+    let fix loop elts i :=
+        match elts with
+        | [] => failwith "index out of bounds"
+        | h :: tl =>
+          if idx =? 0 then mret h else loop tl (i-1)
+        end in
+    match v with
+    | DV (VALUE_Struct f) => loop f idx
+    | DV (VALUE_Array e) => loop e idx
+    | _ => failwith "invalid aggregate data"
     end.
 
 Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err value :=
@@ -611,7 +620,7 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     'vptr <- monad_app_snd (f e) ptrval;
     'vs <- map_monad (monad_app_snd (f e)) idxs;
     failwith "getelementptr not implemented"  (* TODO: Getelementptr *)  
-    (* Think about structure operations *)
+    
   | OP_ExtractElement vecop idx =>
     'vec <- monad_app_snd (f e) vecop;
     'vidx <- monad_app_snd (f e) idx;
@@ -629,13 +638,20 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     'vidx <- monad_app_snd (f e) idxmask;
     failwith "shufflevector not implemented" (* TODO *)
 
-  | OP_ExtractValue vecop idxs =>
-    'vec <- monad_app_snd (f e) vecop;
-    failwith "extractvalue not implemented"
+  | OP_ExtractValue strop idxs =>
+    '(_, str) <- monad_app_snd (f e) strop;
+    let fix loop str idxs : err dvalue :=
+        match idxs with
+        | [] => mret str
+        | i :: tl =>
+          '(_, v) <- index_into_str str i;
+          loop v tl
+        end in
+    loop str idxs
         
-  | OP_InsertValue vecop eltop idxs =>
-    'vec <- monad_app_snd (f e) vecop;
-    'v <- monad_app_snd (f e) eltop;
+  | OP_InsertValue strop eltop idxs =>
+    '(t1, vec) <- monad_app_snd (f e) strop;
+    '(t2, v) <- monad_app_snd (f e) eltop;
     failwith "insertvalue not implemented"
     
   | OP_Select cndop op1 op2 => (* Do this *)
