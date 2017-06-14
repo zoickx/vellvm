@@ -523,11 +523,34 @@ Module StepSemantics(A:ADDR).
     | _, _ => eval_conv_h conv t1 x t2
     end.
 
-  Definition eval_select cnd v1 v2 : err value :=
+  (* Same deal as above with the helper *)
+  Definition eval_select_h cnd v1 v2 : err value :=
     match cnd with
     | DVALUE_I1 i =>
       mret (if Int1.unsigned i =? 1 then v1 else v2)
     | _ => failwith "ill_typed-select"
+    end.
+
+  Definition eval_select t cnd t' v1 v2 : err value :=
+    match t, t', cnd, v1, v2 with
+    | TYPE_Vector _ t, TYPE_Vector _ t', DV (VALUE_Vector es),
+      DV (VALUE_Vector es1), DV (VALUE_Vector es2) =>
+      (* vec needs to loop over es, es1, and es2. Is there a way to
+         generalize vec_loop to cover this? *)
+      let fix loop elts := 
+          match elts with
+          | [] => mret []
+          | e :: tl =>
+            match e with
+            | pair (pair _ cnd) (pair (pair t v1) (pair _ v2)) =>
+              'val <- eval_select_h cnd v1 v2;
+              'vec <- loop tl;
+              mret (pair t val :: vec)
+            end
+          end in
+      'val <- loop (List.combine es (List.combine es1 es2));
+      mret (DV (VALUE_Vector val))
+    | _, _, _, _, _ => eval_select_h cnd v1 v2
     end.
 
 Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err value :=
@@ -619,7 +642,7 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     '(t, cnd) <- monad_app_snd (f e) cndop;
     '(t1, v1) <- monad_app_snd (f e) op1;
     '(t2, v2) <- monad_app_snd (f e) op2;
-    eval_select cnd v1 v2
+    eval_select t cnd t1 v1 v2
   end.
 
 Fixpoint eval_op (e:env) (o:Ollvm_ast.value) : err value :=
