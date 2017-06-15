@@ -549,7 +549,7 @@ Module StepSemantics(A:ADDR).
     end.
 
   (* Helper function for indexding into a structured datatype 
-     for extractvalue and insertvalue *)
+     or vector for extractvalue, insertvalue, extractelement *)
   Definition index_into_str (v:value) (idx:Ollvm_ast.int) : err (typ * value) :=
     let fix loop elts i :=
         match elts with
@@ -560,11 +560,12 @@ Module StepSemantics(A:ADDR).
     match v with
     | DV (VALUE_Struct f) => loop f idx
     | DV (VALUE_Array e) => loop e idx
+    | DV (VALUE_Vector e) => loop e idx
     | _ => failwith "invalid aggregate data"
     end.
 
   (* Helper function for indexding into a structured datatype 
-     for insertvalue *)
+     for insertvalue and insert element *)
   Definition insert_into_str (str:value) (v:value) (idx:Ollvm_ast.int) : err value :=
     let fix loop (acc elts:list (typ * value)) (i:Ollvm_ast.int) :=
         match elts with
@@ -580,7 +581,19 @@ Module StepSemantics(A:ADDR).
     | DV (VALUE_Array e) =>
       'v <- (loop [] e idx);
       mret (DV (VALUE_Array v))
+    | DV (VALUE_Vector e) =>
+      'v <- loop [] e idx;
+      mret (DV (VALUE_Vector v))
     | _ => failwith "invalid aggregate data"
+    end.
+
+  Definition ibits_to_int (i:dvalue) : err Z :=
+    match i with
+    | DVALUE_I1 i => mret (Int1.signed i)
+    | DVALUE_I32 i => mret (Int32.signed i)
+    | DVALUE_I64 i => mret (Int64.signed i)
+    | DV (VALUE_Integer i) => mret i
+    | _ => failwith "not int"
     end.
 
 Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err value :=
@@ -643,15 +656,18 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     failwith "getelementptr not implemented"  (* TODO: Getelementptr *)  
     
   | OP_ExtractElement vecop idx =>
-    'vec <- monad_app_snd (f e) vecop;
-    'vidx <- monad_app_snd (f e) idx;
-    failwith "extractelement not implemented" (* TODO: Extract Element *)
+    '(_, vec) <- monad_app_snd (f e) vecop;
+    '(_, vidx) <- monad_app_snd (f e) idx;
+    'idx <- ibits_to_int vidx;  
+    '(_, v) <- index_into_str vec idx;
+    mret v
       
   | OP_InsertElement vecop eltop idx =>
-    'vec <- monad_app_snd (f e) vecop;
-    'v <- monad_app_snd (f e) eltop;
-    'vidx <- monad_app_snd (f e) idx;
-    failwith "insertelement not implemented" (* TODO *)
+    '(_, vec) <- monad_app_snd (f e) vecop;
+    '(_, v) <- monad_app_snd (f e) eltop;
+    '(_, vidx) <- monad_app_snd (f e) idx;
+    'idx <- ibits_to_int vidx;
+    insert_into_str vec v idx
     
   | OP_ShuffleVector vecop1 vecop2 idxmask =>
     'vec1 <- monad_app_snd (f e) vecop1;
