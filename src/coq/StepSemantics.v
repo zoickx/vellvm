@@ -548,7 +548,8 @@ Module StepSemantics(A:ADDR).
     | _, _, _, _, _ => eval_select_h cnd v1 v2
     end.
 
-  (* Helper function for indexding into a structured datatype for extractvalue *)
+  (* Helper function for indexding into a structured datatype 
+     for extractvalue and insertvalue *)
   Definition index_into_str (v:value) (idx:Ollvm_ast.int) : err (typ * value) :=
     let fix loop elts i :=
         match elts with
@@ -559,6 +560,26 @@ Module StepSemantics(A:ADDR).
     match v with
     | DV (VALUE_Struct f) => loop f idx
     | DV (VALUE_Array e) => loop e idx
+    | _ => failwith "invalid aggregate data"
+    end.
+
+  (* Helper function for indexding into a structured datatype 
+     for insertvalue *)
+  Definition insert_into_str (str:value) (v:value) (idx:Ollvm_ast.int) : err value :=
+    let fix loop (acc elts:list (typ * value)) (i:Ollvm_ast.int) :=
+        match elts with
+        | [] => failwith "index out of bounds"
+        | (t, h) :: tl =>
+          if idx =? 0 then mret (app (app acc [pair t v]) tl)
+          else loop (app acc [pair t h]) tl (i-1)
+        end in
+    match str with
+    | DV (VALUE_Struct f) =>
+      'v <- (loop [] f idx);
+      mret (DV (VALUE_Struct v))
+    | DV (VALUE_Array e) =>
+      'v <- (loop [] e idx);
+      mret (DV (VALUE_Array v))
     | _ => failwith "invalid aggregate data"
     end.
 
@@ -650,9 +671,19 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     loop str idxs
         
   | OP_InsertValue strop eltop idxs =>
-    '(t1, vec) <- monad_app_snd (f e) strop;
+    '(t1, str) <- monad_app_snd (f e) strop;
     '(t2, v) <- monad_app_snd (f e) eltop;
-    failwith "insertvalue not implemented"
+    let fix loop str idxs : err dvalue :=
+        match idxs with
+        | [] => failwith "invalid indices"
+        | [i] =>
+          insert_into_str str v i
+        | i :: tl =>
+          '(_, v) <- index_into_str str i;
+          'v <- loop v tl;
+          insert_into_str str v i
+        end in
+    loop str idxs
     
   | OP_Select cndop op1 op2 => (* Do this *)
     '(t, cnd) <- monad_app_snd (f e) cndop;
