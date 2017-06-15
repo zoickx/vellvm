@@ -163,6 +163,9 @@ Definition ctxt := partial_map value.
 Definition val_of_nat (n:nat) : value :=
   SV (VALUE_Integer (Z.of_nat n)).
 
+Definition val_of_i64 (i:Imp.int64) : value :=
+  SV (VALUE_Integer (Imp.Int64.signed i)).
+
 Definition val_of_ident (id:ident) : value :=
   SV (VALUE_Ident id).
 
@@ -217,7 +220,7 @@ Fixpoint compile_aexp (g:ctxt) (a:aexp) : LLVM value :=
       mret (local lid)
   in
   match a with
-  | ANum n => mret (val_of_nat n)
+  | ANum n => mret (val_of_i64 n)
 
   | AId x =>
     'ptr <- lift "AId ident not found" (g x);
