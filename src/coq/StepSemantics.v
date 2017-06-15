@@ -596,6 +596,35 @@ Module StepSemantics(A:ADDR).
     | _ => failwith "not int"
     end.
 
+  Definition eval_shuffle vec1 vec2 vidx : err value :=
+    'elts <- match vec1 with
+            | DV (VALUE_Vector elts1) =>
+              match vec2 with
+              | DV (VALUE_Vector elts2) =>
+                mret (DV (VALUE_Vector (elts1 ++ elts2)))
+              | _ => failwith "ill_typed-shuffle"
+              end
+            | _ => failwith "ill_typed-shuffle"
+            end;
+    match vidx with
+    | DV (VALUE_Undef) => mret (DV (VALUE_Undef))
+    | DV (VALUE_Vector el) =>
+      'els <- monad_fold_left (fun acc e =>
+                                match e with
+                                | pair t v =>
+                                  match v with
+                                  | DV (VALUE_Undef) =>
+                                    mret (app acc [pair t (DV (VALUE_Undef))])
+                                  | _ =>
+                                    'i <- ibits_to_int v;
+                                    'els <- index_into_str elts i;
+                                    mret (app acc [els])
+                                  end
+                                end) el [];
+      mret (DV (VALUE_Vector els))                    
+    | _ => failwith "ill_typed-mask"
+    end.
+
 Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err value :=
   match o with
   | VALUE_Ident id => 
@@ -670,11 +699,11 @@ Definition eval_expr {A:Set} (f:env -> A -> err value) (e:env) (o:Expr A) : err 
     insert_into_str vec v idx
     
   | OP_ShuffleVector vecop1 vecop2 idxmask =>
-    'vec1 <- monad_app_snd (f e) vecop1;
-    'vec2 <- monad_app_snd (f e) vecop2;      
-    'vidx <- monad_app_snd (f e) idxmask;
-    failwith "shufflevector not implemented" (* TODO *)
-
+    '(_, vec1) <- monad_app_snd (f e) vecop1;
+    '(_, vec2) <- monad_app_snd (f e) vecop2;      
+    '(_, vidx) <- monad_app_snd (f e) idxmask;
+    eval_shuffle vec1 vec2 vidx
+    
   | OP_ExtractValue strop idxs =>
     '(_, str) <- monad_app_snd (f e) strop;
     let fix loop str idxs : err dvalue :=
