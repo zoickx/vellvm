@@ -1,0 +1,9 @@
+(jbuild_version 1)
+
+(library
+ ((name extracted)
+  (wrapped false)
+  (ocamlc_flags (-I extracted))
+  (synopsis "ML code extracted from Coq")
+  ))
+

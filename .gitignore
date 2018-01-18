@@ -10,6 +10,7 @@
 src/main.native
 src/vellvm
 src/ml/.merlin
+src/ml/extracted/.merlin
 *~
 *.v~
 *.log

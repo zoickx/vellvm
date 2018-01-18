@@ -1,0 +1,12 @@
+(jbuild_version 1)
+
+(menhir
+ ((flags (--explain))
+  (modules (ollvm_parser))))
+
+(ocamllex (ollvm_lexer))
+
+(executables
+ ((names (main))
+  (libraries (extracted unix str))
+))
