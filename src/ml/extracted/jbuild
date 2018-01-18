@@ -3,7 +3,7 @@
 (library
  ((name extracted)
   (wrapped false)
-  (ocamlc_flags (-I extracted))
+  (modules (:standard \ Fcore_generic_fmt))
   (synopsis "ML code extracted from Coq")
   ))
 
