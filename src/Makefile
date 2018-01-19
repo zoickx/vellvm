@@ -3,14 +3,13 @@ COQDIR = coq
 COQLIBDIR = ../lib
 
 # OCaml sources
-MLDIR = ml imp
+MLDIR = ml
 EXTRACTDIR = ml/extracted
 
 COQINCLUDES=$(foreach d, $(COQDIR), -R $(d) Vellvm) -R $(COQLIBDIR)/paco/src Paco -R $(EXTRACTDIR) Extract -R ../lib/CompCert compcert
 COQC="$(COQBIN)coqc" -q $(COQINCLUDES) $(COQCOPTS)
 COQDEP="$(COQBIN)coqdep" $(COQINCLUDES)
 COQEXEC="$(COQBIN)coqtop" -q -w none $(COQINCLUDES) -batch -load-vernac-source
-MENHIR=menhir
 CP=cp
 
 COQFILES := Ollvm_ast Classes Util Misc AstLib Dom CFG CFGProp Effects StepSemantics Memory DeadInstr Transform DecidableEquality DecidableProp
@@ -35,7 +34,6 @@ $(EXTRACTDIR)/STAMP: $(VOFILES) $(EXTRACTDIR)/Extract.v
 	$(COQEXEC) $(EXTRACTDIR)/Extract.v
 	touch $(EXTRACTDIR)/STAMP
 
-
 %.vo: %.v
 	@rm -f doc/$(*F).glob
 	@echo "COQC $*.v"
@@ -45,26 +43,19 @@ depend: $(VFILES)
 	@echo "Analyzing Coq dependencies"
 	@$(COQDEP) $^ > .depend
 
-
-
 # Directories containing plain Caml code
 OCAMLDIRS= $(EXTRACTDIR) $(MLDIR) 
 
-COMMA=,
-OCAMLINCLUDES=$(patsubst %,-I %, $(OCAMLDIRS))
-print-ocaml-includes:
-	@echo $(OCAMLINCLUDES)
-
-OCAMLLIBS := unix,str
-
 .PHONY: clean main.native test qc restore
 
-main.native: 
-	@echo "Compiling Vellvm"
-	ocamlbuild -r -use-menhir -yaccflag --explain $(OCAMLINCLUDES) -libs $(OCAMLLIBS) main.native
+EXE=ml/_build/default/main.exe
 
-vellvm: main.native
-	cp main.native vellvm
+$(EXE): ml/*.ml ml/extracted/*.ml
+	@echo "Compiling Vellvm"
+	(cd ml; jbuilder build main.exe)
+
+vellvm: $(EXE)
+	cp $(EXE) vellvm
 
 test: vellvm
 	./vellvm --test-pp-dir ../tests/ll
@@ -77,7 +68,7 @@ clean:
 	rm -f $(VOFILES)
 	rm -rf doc/*.glob
 	rm -f $(EXTRACTDIR)/STAMP $(EXTRACTDIR)/*.ml $(EXTRACTDIR)/*.mli
-	ocamlbuild -clean
+	(cd ml; jbuilder clean)
 	rm -rf output
 	rm -f vellvm
 

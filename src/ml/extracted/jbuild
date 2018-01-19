@@ -3,7 +3,7 @@
 (library
  ((name extracted)
   (wrapped false)
-  (modules (:standard \ Fcore_generic_fmt))
+  (modules (:standard))
   (synopsis "ML code extracted from Coq")
   ))
 
